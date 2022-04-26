@@ -3,7 +3,7 @@ import os.path as osp
 from copy import deepcopy
 import torch
 import torch.nn.functional as F
-from pytorch_lightning.utilities.rank_zero import rank_zero_only
+from pytorch_lightning.utilities import rank_zero_only
 from torchvision.utils import save_image
 from torchmetrics import MetricCollection
 from pl_modules.models.pl_base_model import BaseModel
