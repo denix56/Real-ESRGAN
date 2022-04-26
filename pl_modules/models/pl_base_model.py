@@ -61,7 +61,7 @@ class BaseModel(ABC, pl.LightningModule):
         if optim_type == 'Adam':
             optimizer = torch.optim.Adam(params, lr, **kwargs)
         else:
-            raise NotImplementedError(f'optimizer {optim_type} is not supperted yet.')
+            raise NotImplementedError(f'optimizer {optim_type} is not supported yet.')
         return optimizer
 
     def optimizer_zero_grad(self, epoch, batch_idx, optimizer, optimizer_idx):

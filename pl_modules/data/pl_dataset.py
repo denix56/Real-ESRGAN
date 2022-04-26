@@ -4,7 +4,6 @@ import pytorch_lightning as pl
 from pytorch_lightning.accelerators import GPUAccelerator
 from pl_bolts.datamodules import AsynchronousLoader
 from basicsr.data import build_dataset
-import pl_modules.data
 
 
 class PLDataset(pl.LightningDataModule):
