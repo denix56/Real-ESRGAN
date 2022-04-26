@@ -57,7 +57,7 @@ def train_pipeline(root_path):
     ema = EMA(opt['train']['ema_decay'])
 
     if opt['logger'].get('use_tb_logger'):
-        logger = TensorBoardLogger(osp.join(opt['root_path'], 'tb_logger'))
+        logger = TensorBoardLogger(opt['root_path'], name='tb_logs')
     else:
         logger = None
 
