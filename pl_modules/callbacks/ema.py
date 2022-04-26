@@ -99,11 +99,9 @@ class EMA(pl.Callback):
         # Replace EMA weights with training weights
         pl_module.load_state_dict(self.original_state_dict, strict=False)
 
-    @overrides
     def state_dict(self) -> Dict[str, Any]:
         return {"ema_state_dict": self.ema_state_dict, "_ema_state_dict_ready": self._ema_state_dict_ready}
 
-    @overrides
     def load_state_dict(self, callback_state: Dict[str, Any]) -> None:
         self._ema_state_dict_ready = callback_state["_ema_state_dict_ready"]
         self.ema_state_dict = callback_state["ema_state_dict"]
