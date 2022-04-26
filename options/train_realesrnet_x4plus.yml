@@ -37,8 +37,8 @@ datasets:
   train:
     name: DF2K+OST
     type: RealESRGANDataset
-    dataroot_gt: C:/Users/denys/Thesis/data/DF2K
-    meta_info: C:/Users/denys/Thesis/data/DF2K/meta_info/meta_info_DF2Kmultiscale_sub.txt
+    dataroot_gt: data/DF2K
+    meta_info: data/DF2K/meta_info/meta_info_DF2Kmultiscale_sub.txt
     io_backend:
       type: disk
 
@@ -76,8 +76,8 @@ datasets:
   val:
    name: validation
    type: PairedImageDataset
-   dataroot_gt: C:/Users/denys/Thesis/data/Set14_SR/HR
-   dataroot_lq: C:/Users/denys/Thesis/data/Set14_SR/LR
+   dataroot_gt: data/Set14_SR/HR
+   dataroot_lq: data/Set14_SR/LR
    io_backend:
      type: disk
 

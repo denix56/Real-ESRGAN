@@ -2,6 +2,7 @@ from torchmetrics import PeakSignalNoiseRatio
 from pl_modules.registry import PL_METRIC_REGISTRY
 from pl_modules.metrics.metric_util import rgb2ycbcr
 
+
 # Make consistent with BasicSR
 class PSNR2(PeakSignalNoiseRatio):
     def __init__(self, crop_border, input_order='HWC', test_y_channel=False, *args, **kwargs):

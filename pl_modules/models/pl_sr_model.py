@@ -1,5 +1,6 @@
 import os
 import os.path as osp
+from copy import deepcopy
 import torch
 import torch.nn.functional as F
 from pytorch_lightning.utilities.rank_zero import rank_zero_only
@@ -25,10 +26,12 @@ class SRModel(BaseModel):
         with_metrics = self.opt['val'].get('metrics')
         if with_metrics:
             for name, opt_ in with_metrics.items():
-                args = {'compute_on_step': False}
+                opt_ = deepcopy(opt_)
+                opt_['compute_on_step'] = False
                 if name == 'psnr':
-                    args['data_range'] = 1.0
-                val_metrics.append(build_metric(opt_, **args))
+                    opt_['data_range'] = 1.0
+                    opt_['input_order'] = 'CHW'
+                val_metrics.append(build_metric(opt_))
 
         self.val_metrics = MetricCollection(val_metrics, prefix='val/')
         self.gather_images = GatherImages()

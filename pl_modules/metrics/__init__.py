@@ -8,7 +8,7 @@ from pl_modules.metrics.psnr_ssim import calculate_psnr
 __all__ = ['calculate_psnr']
 
 
-def build_metric(opt, **kwargs):
+def build_metric(opt):
     """Build metric from data and options.
         Args:
             opt (dict): Configuration. It must contain:
@@ -16,5 +16,5 @@ def build_metric(opt, **kwargs):
         """
     opt = deepcopy(opt)
     metric_type = opt.pop('type')
-    metric = PL_METRIC_REGISTRY.get(metric_type)(**opt, **kwargs)
+    metric = PL_METRIC_REGISTRY.get(metric_type)(**opt)
     return metric
