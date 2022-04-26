@@ -3,6 +3,28 @@ import glob
 import os
 from PIL import Image
 
+import contextlib
+import joblib
+from tqdm.auto import tqdm
+from joblib import Parallel, delayed
+
+
+@contextlib.contextmanager
+def tqdm_joblib(tqdm_object):
+    """Context manager to patch joblib to report into tqdm progress bar given as argument"""
+    class TqdmBatchCompletionCallback(joblib.parallel.BatchCompletionCallBack):
+        def __call__(self, *args, **kwargs):
+            tqdm_object.update(n=self.batch_size)
+            return super().__call__(*args, **kwargs)
+
+    old_batch_callback = joblib.parallel.BatchCompletionCallBack
+    joblib.parallel.BatchCompletionCallBack = TqdmBatchCompletionCallback
+    try:
+        yield tqdm_object
+    finally:
+        joblib.parallel.BatchCompletionCallBack = old_batch_callback
+        tqdm_object.close()
+
 
 def main(args):
     # For DF2K, we consider the following three scales,
@@ -11,14 +33,15 @@ def main(args):
     shortest_edge = 400
 
     path_list = sorted(glob.glob(os.path.join(args.input, '*')))
-    for path in path_list:
-        print(path)
+
+    def work_func(path):
+        #print(path, end=' ')
         basename = os.path.splitext(os.path.basename(path))[0]
 
         img = Image.open(path)
         width, height = img.size
         for idx, scale in enumerate(scale_list):
-            print(f'\t{scale:.2f}')
+            #print(f'\t{scale:.2f}', end='\r')
             rlt = img.resize((int(width * scale), int(height * scale)), resample=Image.LANCZOS)
             rlt.save(os.path.join(args.output, f'{basename}T{idx}.png'))
 
@@ -32,7 +55,11 @@ def main(args):
             height = shortest_edge
             width = int(height * ratio)
         rlt = img.resize((int(width), int(height)), resample=Image.LANCZOS)
-        rlt.save(os.path.join(args.output, f'{basename}T{idx+1}.png'))
+        rlt.save(os.path.join(args.output, f'{basename}T{idx + 1}.png'))
+
+    with tqdm_joblib(tqdm(desc="Multiscaling images", total=len(path_list))) as progress_bar:
+        Parallel(n_jobs=8)(delayed(work_func)(path) for path in path_list)
+
 
 
 if __name__ == '__main__':

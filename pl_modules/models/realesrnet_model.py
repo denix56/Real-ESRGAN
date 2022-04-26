@@ -3,14 +3,14 @@ import random
 import torch
 from basicsr.data.degradations import random_add_gaussian_noise_pt, random_add_poisson_noise_pt
 from basicsr.data.transforms import paired_random_crop
-from basicsr.models.sr_model import SRModel
 from basicsr.utils import DiffJPEG, USMSharp
 from basicsr.utils.img_process_util import filter2D
-from basicsr.utils.registry import MODEL_REGISTRY
+from pl_modules import PL_MODEL_REGISTRY
 from torch.nn import functional as F
+from pl_modules.models.pl_sr_model import SRModel
 
 
-@MODEL_REGISTRY.register()
+@PL_MODEL_REGISTRY.register()
 class RealESRNetModel(SRModel):
     """RealESRNet Model for Real-ESRGAN: Training Real-World Blind Super-Resolution with Pure Synthetic Data.
 
@@ -22,12 +22,17 @@ class RealESRNetModel(SRModel):
 
     def __init__(self, opt):
         super(RealESRNetModel, self).__init__(opt)
-        self.jpeger = DiffJPEG(differentiable=False).to(self.device)  # simulate JPEG compression artifacts
-        self.usm_sharpener = USMSharp().to(self.device)  # do usm sharpening
+        self.jpeger = DiffJPEG(differentiable=False).requires_grad_(False)  # simulate JPEG compression artifacts
+        self.usm_sharpener = USMSharp().requires_grad_(False)  # do usm sharpening
         self.queue_size = opt.get('queue_size', 180)
 
+    def on_fit_start(self):
+        if self.preprocess_cpu:
+            self.jpeger = self.jpeger.cpu()
+            self.usm_sharpener = self.usm_sharpener.cpu()
+
     @torch.no_grad()
-    def _dequeue_and_enqueue(self):
+    def _dequeue_and_enqueue(self, lq, gt):
         """It is the training pair pool for increasing the diversity in a batch.
 
         Batch processing limits the diversity of synthetic degradations in a batch. For example, samples in a
@@ -35,12 +40,12 @@ class RealESRNetModel(SRModel):
         to increase the degradation diversity in a batch.
         """
         # initialize
-        b, c, h, w = self.lq.size()
+        b, c, h, w = lq.size()
         if not hasattr(self, 'queue_lr'):
             assert self.queue_size % b == 0, f'queue size {self.queue_size} should be divisible by batch size {b}'
-            self.queue_lr = torch.zeros(self.queue_size, c, h, w).cuda()
-            _, c, h, w = self.gt.size()
-            self.queue_gt = torch.zeros(self.queue_size, c, h, w).cuda()
+            self.queue_lr = torch.zeros(self.queue_size, c, h, w, device=self.device)
+            _, c, h, w = gt.size()
+            self.queue_gt = torch.zeros(self.queue_size, c, h, w, device=self.device)
             self.queue_ptr = 0
         if self.queue_ptr == self.queue_size:  # the pool is full
             # do dequeue and enqueue
@@ -52,37 +57,39 @@ class RealESRNetModel(SRModel):
             lq_dequeue = self.queue_lr[0:b, :, :, :].clone()
             gt_dequeue = self.queue_gt[0:b, :, :, :].clone()
             # update the queue
-            self.queue_lr[0:b, :, :, :] = self.lq.clone()
-            self.queue_gt[0:b, :, :, :] = self.gt.clone()
+            self.queue_lr[0:b, :, :, :] = lq.clone()
+            self.queue_gt[0:b, :, :, :] = gt.clone()
 
-            self.lq = lq_dequeue
-            self.gt = gt_dequeue
+            lq = lq_dequeue
+            gt = gt_dequeue
         else:
             # only do enqueue
-            self.queue_lr[self.queue_ptr:self.queue_ptr + b, :, :, :] = self.lq.clone()
-            self.queue_gt[self.queue_ptr:self.queue_ptr + b, :, :, :] = self.gt.clone()
+            self.queue_lr[self.queue_ptr:self.queue_ptr + b, :, :, :] = lq.clone()
+            self.queue_gt[self.queue_ptr:self.queue_ptr + b, :, :, :] = gt.clone()
             self.queue_ptr = self.queue_ptr + b
 
+        return lq, gt
+
     @torch.no_grad()
-    def feed_data(self, data):
+    def _feed_data(self, data):
         """Accept data from dataloader, and then add two-order degradations to obtain LQ images.
         """
-        if self.is_train and self.opt.get('high_order_degradation', True):
+        if self.trainer.training and self.opt.get('high_order_degradation', True):
             # training data synthesis
-            self.gt = data['gt'].to(self.device)
+            gt = data['gt']
             # USM sharpen the GT images
             if self.opt['gt_usm'] is True:
-                self.gt = self.usm_sharpener(self.gt)
+                gt = self.usm_sharpener(gt)
 
-            self.kernel1 = data['kernel1'].to(self.device)
-            self.kernel2 = data['kernel2'].to(self.device)
-            self.sinc_kernel = data['sinc_kernel'].to(self.device)
+            kernel1 = data['kernel1']
+            kernel2 = data['kernel2']
+            sinc_kernel = data['sinc_kernel']
 
-            ori_h, ori_w = self.gt.size()[2:4]
+            ori_h, ori_w = gt.size()[2:4]
 
             # ----------------------- The first degradation process ----------------------- #
             # blur
-            out = filter2D(self.gt, self.kernel1)
+            out = filter2D(gt, kernel1)
             # random resize
             updown_type = random.choices(['up', 'down', 'keep'], self.opt['resize_prob'])[0]
             if updown_type == 'up':
@@ -113,7 +120,7 @@ class RealESRNetModel(SRModel):
             # ----------------------- The second degradation process ----------------------- #
             # blur
             if np.random.uniform() < self.opt['second_blur_prob']:
-                out = filter2D(out, self.kernel2)
+                out = filter2D(out, kernel2)
             # random resize
             updown_type = random.choices(['up', 'down', 'keep'], self.opt['resize_prob2'])[0]
             if updown_type == 'up':
@@ -149,7 +156,7 @@ class RealESRNetModel(SRModel):
                 # resize back + the final sinc filter
                 mode = random.choice(['area', 'bilinear', 'bicubic'])
                 out = F.interpolate(out, size=(ori_h // self.opt['scale'], ori_w // self.opt['scale']), mode=mode)
-                out = filter2D(out, self.sinc_kernel)
+                out = filter2D(out, sinc_kernel)
                 # JPEG compression
                 jpeg_p = out.new_zeros(out.size(0)).uniform_(*self.opt['jpeg_range2'])
                 out = torch.clamp(out, 0, 1)
@@ -162,27 +169,33 @@ class RealESRNetModel(SRModel):
                 # resize back + the final sinc filter
                 mode = random.choice(['area', 'bilinear', 'bicubic'])
                 out = F.interpolate(out, size=(ori_h // self.opt['scale'], ori_w // self.opt['scale']), mode=mode)
-                out = filter2D(out, self.sinc_kernel)
+                out = filter2D(out, sinc_kernel)
 
             # clamp and round
-            self.lq = torch.clamp((out * 255.0).round(), 0, 255) / 255.
+            lq = torch.clamp((out * 255.0).round(), 0, 255) / 255.
 
             # random crop
             gt_size = self.opt['gt_size']
-            self.gt, self.lq = paired_random_crop(self.gt, self.lq, gt_size, self.opt['scale'])
+            gt, lq = paired_random_crop(gt, lq, gt_size, self.opt['scale'])
 
             # training pair pool
-            self._dequeue_and_enqueue()
-            self.lq = self.lq.contiguous()  # for the warning: grad and param do not obey the gradient layout contract
+            lq, gt = self._dequeue_and_enqueue(lq, gt)
+            lq = lq.contiguous()  # for the warning: grad and param do not obey the gradient layout contract
+
+            data = {
+                'lq': lq,
+                'gt': gt
+            }
         else:
             # for paired training or validation
-            self.lq = data['lq'].to(self.device)
+            data_new = {
+                'lq': data['lq']
+            }
             if 'gt' in data:
-                self.gt = data['gt'].to(self.device)
-                self.gt_usm = self.usm_sharpener(self.gt)
+                gt = data['gt']
+                gt_usm = self.usm_sharpener(gt)
+                data_new['gt'] = gt_usm
+            data = data_new
+        return data
 
-    def nondist_validation(self, dataloader, current_iter, tb_logger, save_img):
-        # do not use the synthetic process during validation
-        self.is_train = False
-        super(RealESRNetModel, self).nondist_validation(dataloader, current_iter, tb_logger, save_img)
-        self.is_train = True
+
