@@ -65,7 +65,7 @@ def train_pipeline(root_path):
 
     trainer = pl.Trainer(logger=logger, callbacks=[ms, mcp, ema], devices=opt['num_gpu'], accelerator='gpu',
                          max_steps=total_iters, benchmark=True, deterministic=deterministic,
-                         precision=16 if opt['train'].get('mixed') else 32, strategy='ddp', fast_dev_run=opt['debug'])
+                         precision=16 if opt['train'].get('mixed') else 32, strategy='ddp', fast_dev_run=args.debug)
     if deterministic:
         # We have bilinear interpolation somewhere
         torch.use_deterministic_algorithms(True, warn_only=True)
