@@ -1,10 +1,10 @@
 from copy import deepcopy
 from typing import Optional, Union, Dict, Any
 from collections import OrderedDict
-
-import pytorch_lightning as pl
-import torch
 from overrides import overrides
+
+import torch
+import pytorch_lightning as pl
 from pytorch_lightning.utilities import rank_zero_only
 
 

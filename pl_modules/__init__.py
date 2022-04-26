@@ -1,4 +1,5 @@
-from basicsr.utils.registry import Registry
-
-PL_MODEL_REGISTRY = Registry('pl_model')
-PL_METRIC_REGISTRY = Registry('pl_metric')
+from .registry import *
+from .data import *
+from .models import *
+from .metrics import *
+from .callbacks import *

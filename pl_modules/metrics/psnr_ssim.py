@@ -1,5 +1,5 @@
 from torchmetrics import PeakSignalNoiseRatio
-from pl_modules import PL_METRIC_REGISTRY
+from pl_modules.registry import PL_METRIC_REGISTRY
 from pl_modules.metrics.metric_util import rgb2ycbcr
 
 # Make consistent with BasicSR

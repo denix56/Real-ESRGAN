@@ -1,6 +1,7 @@
 import torch
 from torchmetrics import Metric
 
+
 def rgb2ycbcr(img, y_only=False):
     """Convert a RGB image to YCbCr image.
     This function produces the same results as Matlab's `rgb2ycbcr` function.
