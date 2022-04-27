@@ -41,9 +41,9 @@ class GatherImages(Metric):
         self.add_state('hr', default=[], dist_reduce_fx=None)
 
     def update(self, lr, lr_hr, hr):
-        self.lr.append(lr.squeeze(0).cpu())
-        self.lr_hr.append(lr_hr.squeeze(0).cpu())
-        self.hr.append(hr.squeeze(0).cpu())
+        self.lr.append(lr.squeeze(0))
+        self.lr_hr.append(lr_hr.squeeze(0))
+        self.hr.append(hr.squeeze(0))
 
     def compute(self):
         return self.lr, self.lr_hr, self.hr
