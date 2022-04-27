@@ -54,7 +54,7 @@ def train_pipeline(root_path):
     model = build_model(opt)
 
     ms = ModelSummary(-1)
-    mcp = ModelCheckpoint(opt['path']['models'], monitor='val/PeakSignalNoiseRatio', mode='max', save_last=True)
+    mcp = ModelCheckpoint(opt['path']['models'], monitor='val/PSNR', mode='max', save_last=True)
     ema = EMA(opt['train']['ema_decay'])
 
     if opt['logger'].get('use_tb_logger'):
