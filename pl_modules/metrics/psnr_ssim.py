@@ -4,9 +4,9 @@ from pl_modules.metrics.metric_util import rgb2ycbcr
 
 
 # Make consistent with BasicSR
-class PSNR2(PeakSignalNoiseRatio):
+class PSNR(PeakSignalNoiseRatio):
     def __init__(self, crop_border, input_order='HWC', test_y_channel=False, *args, **kwargs):
-        super(PSNR2, self).__init__(*args, **kwargs)
+        super(PSNR, self).__init__(*args, **kwargs)
         assert input_order in ['HWC', 'CHW']
         self.crop_border = crop_border
         self.input_order = input_order
@@ -29,8 +29,7 @@ class PSNR2(PeakSignalNoiseRatio):
         return super().update(preds, target)
 
 
-
 @PL_METRIC_REGISTRY.register()
 def calculate_psnr(*args, **kwargs):
-    return PSNR2(*args, **kwargs)
+    return PSNR(*args, **kwargs)
 
