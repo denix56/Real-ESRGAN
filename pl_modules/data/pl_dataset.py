@@ -1,7 +1,6 @@
 from typing import *
 from torch.utils.data import DataLoader
 import pytorch_lightning as pl
-from pytorch_lightning.accelerators import GPUAccelerator
 from pl_bolts.datamodules import AsynchronousLoader
 from basicsr.data import build_dataset
 import pl_modules.data
@@ -34,8 +33,7 @@ class PLDataset(pl.LightningDataModule):
                             num_workers=dataset_opt['num_worker_per_gpu'], drop_last=True,
                             pin_memory=dataset_opt.get('pin_memory', False),
                             persistent_workers=dataset_opt.get('persistent_workers', False))
-        if not self.opt.get('preprocess_cpu', False) and \
-            (self.opt['num_gpu'] == 1 or self.opt['num_gpu'] == 'auto' and GPUAccelerator.auto_device_count() == 1):
+        if not self.opt.get('preprocess_cpu', False) and self.trainer.num_devices == 1:
             loader = AsynchronousLoader(loader)
         return loader
 
@@ -44,7 +42,7 @@ class PLDataset(pl.LightningDataModule):
         for ds, dataset_opt in self.val_ds:
             loader = DataLoader(ds, batch_size=1, shuffle=False,
                                 num_workers=0, drop_last=False,
-                                pin_memory=dataset_opt.get('pin_memory', False))
+                                pin_memory=dataset_opt.get('pin_memory', True))
             loaders.append(loader)
         if len(loaders) == 1:
             loaders = loaders[0]
