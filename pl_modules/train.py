@@ -5,6 +5,7 @@ import torch
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelSummary, ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
+from pytorch_lightning.strategies.ddp import DDPStrategy
 
 from basicsr.train import parse_options, copy_opt_file
 from basicsr.utils import make_exp_dirs, scandir
@@ -66,7 +67,7 @@ def train_pipeline(root_path):
     trainer = pl.Trainer(logger=logger, callbacks=[ms, mcp, ema], devices=opt['num_gpu'], accelerator='gpu',
                          max_steps=total_iters, benchmark=True, deterministic=deterministic,
                          precision=16 if opt['train'].get('mixed') else 32,
-                         strategy='ddp' if opt['num_gpu'] != 1 else None, fast_dev_run=args.debug)
+                         strategy=DDPStrategy(find_unused_parameters=False) if opt['num_gpu'] != 1 else None, fast_dev_run=args.debug)
     if deterministic:
         # We have bilinear interpolation somewhere
         torch.use_deterministic_algorithms(True, warn_only=True)

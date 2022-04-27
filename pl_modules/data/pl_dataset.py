@@ -22,8 +22,6 @@ class PLDataset(pl.LightningDataModule):
         for phase, dataset_opt in self.opt['datasets'].items():
             if phase == 'train':
                 self.train_ds = (build_dataset(dataset_opt), dataset_opt)
-                self.batch_size_per_gpu = dataset_opt['batch_size_per_gpu']
-                self.num_worker_per_gpu = dataset_opt['num_worker_per_gpu']
             elif phase.split('_')[0] == 'val':
                 self.val_ds.append((build_dataset(dataset_opt), dataset_opt))
             else:
