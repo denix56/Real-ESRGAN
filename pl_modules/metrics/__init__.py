@@ -5,7 +5,7 @@ from pl_modules.metrics.psnr_ssim import calculate_psnr
 # from .niqe import calculate_niqe
 # from .psnr_ssim import calculate_psnr, calculate_ssim
 
-__all__ = ['calculate_psnr']
+__all__ = ['build_metric']
 
 
 def build_metric(opt):

@@ -8,7 +8,8 @@ from torchvision.utils import save_image
 from torchmetrics import MetricCollection
 from pl_modules.models.pl_base_model import BaseModel
 from pl_modules import PL_MODEL_REGISTRY
-from basicsr.archs import build_network
+#from basicsr.archs import build_network
+from pl_modules.archs import build_network
 from basicsr.losses import build_loss
 from overrides import overrides
 from pl_modules.metrics import build_metric
