@@ -21,7 +21,6 @@ class SRModel(BaseModel):
     def __init__(self, opt):
         super(SRModel, self).__init__(opt)
         self.net_g = build_network(opt['network_g'])
-        self._build_losses()
 
         val_metrics = []
         with_metrics = self.opt['val'].get('metrics')
@@ -37,8 +36,12 @@ class SRModel(BaseModel):
         self.val_metrics = MetricCollection(val_metrics, prefix='val/')
         self.gather_images = GatherImages()
 
+    def setup(self, stage=None):
+        super().setup(stage)
+        self._build_losses()
+        self._load_weights()
+
     def _build_losses(self):
-        # self.net_g.train()
         train_opt = self.opt['train']
 
         # define losses
@@ -94,7 +97,7 @@ class SRModel(BaseModel):
         loss_dict['l_total'] = l_total
         self.log_dict(loss_dict)
 
-        if self.global_step % 500 == 0:
+        if self.global_step % 250 == 0:
             self._save_images(lq, output, gt, prefix='train')
 
         return l_total
@@ -119,7 +122,8 @@ class SRModel(BaseModel):
     @rank_zero_only
     @torch.no_grad()
     def _save_images(self, lrs, lr_hrs, hrs, prefix='val'):
-        os.makedirs(osp.join(self.opt['path']['visualization'], prefix), exist_ok=True)
+        path = osp.join(self.opt['path']['visualization'], prefix)
+        os.makedirs(path, exist_ok=True)
         is_list_of_tensors = True
         if isinstance(lrs, torch.Tensor) and len(lrs.shape) == 4:
             is_list_of_tensors = False
@@ -128,8 +132,16 @@ class SRModel(BaseModel):
         for i, (lr, lr_hr, hr) in enumerate(zip(lrs, lr_hrs, hrs)):
             if is_list_of_tensors:
                 lr = F.interpolate(lr.unsqueeze(0), size=hr.shape[-2:], mode='bicubic').squeeze(0)
-            joined = torch.cat((lr, lr_hr, hr), dim=-1)
+            joined = torch.cat((lr, lr_hr, hr), dim=-1).clamp(0, 1)
             self.logger.experiment.add_image(osp.join(prefix, 'image_{}'.format(i)), joined, self.global_step)
             if self.opt['val'].get('save_img', False):
                 save_image(joined, osp.join(self.opt['path']['visualization'], prefix, 'image_{}.png'.format(i)))
 
+    def _load_weights(self):
+        train_opt = self.opt['train']
+        path = train_opt.get('pretrain_network_g')
+
+        if path is not None:
+            strict = train_opt.get('strict_load_g')
+            cpt = torch.load(path)
+            self.net_g.load_state_dict(cpt['state_dict']['net_g'], strict=strict)

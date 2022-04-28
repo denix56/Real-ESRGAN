@@ -193,8 +193,8 @@ class RealESRNetModel(SRModel):
             }
             if 'gt' in data:
                 gt = data['gt']
-                gt_usm = self.usm_sharpener(gt)
-                data_new['gt'] = gt_usm
+                data_new['gt'] = gt
+                data_new['gt_usm'] = self.usm_sharpener(gt)
             data = data_new
         return data
 

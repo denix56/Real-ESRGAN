@@ -38,9 +38,8 @@ class BaseModel(ABC, pl.LightningModule):
             schedulers.append(sched)
         return schedulers
 
-    @abstractmethod
     def _feed_data(self, data):
-        pass
+        return data
 
     def on_before_batch_transfer(self, batch, dataloader_idx):
         if self.preprocess_cpu:

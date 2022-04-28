@@ -22,6 +22,11 @@ def build_model(opt):
             model_type (str): Model type.
     """
     opt = deepcopy(opt)
+
+    cpt_load_path = opt['train'].get('pretrain_network_g')
+    if cpt_load_path:
+        cpt = torch.load(cpt_load_path)
+
     model = PL_MODEL_REGISTRY.get(opt['model_type'])(opt)
     print(f'Model [{model.__class__.__name__}] is created.')
 

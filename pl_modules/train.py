@@ -1,4 +1,3 @@
-import logging
 import os.path as osp
 
 import torch
@@ -43,7 +42,6 @@ def train_pipeline(root_path):
     # parse options, set distributed setting, set random seed
     opt, args = parse_options(root_path, is_train=True)
     opt['root_path'] = root_path
-
     resume_ckpt_path = find_resume_ckpt(opt)
 
     pl.seed_everything(opt['manual_seed'], workers=True)
@@ -55,7 +53,12 @@ def train_pipeline(root_path):
 
     ms = ModelSummary(-1)
     mcp = ModelCheckpoint(opt['path']['models'], monitor='val/PSNR', mode='max', save_last=True)
-    ema = EMA(opt['train']['ema_decay'])
+    cbs = [ms, mcp]
+
+    ema_decay = opt['train'].get('ema_decay')
+    if ema_decay is not None:
+        ema = EMA(ema_decay)
+        cbs.append(ema)
 
     if opt['logger'].get('use_tb_logger'):
         logger = TensorBoardLogger(opt['root_path'], name='tb_logs')
@@ -64,7 +67,7 @@ def train_pipeline(root_path):
 
     deterministic = False
 
-    trainer = pl.Trainer(logger=logger, callbacks=[ms, mcp, ema], devices=opt['num_gpu'], accelerator='gpu',
+    trainer = pl.Trainer(logger=logger, callbacks=cbs, devices=opt['num_gpu'], accelerator='gpu',
                          max_steps=total_iters, benchmark=True, deterministic=deterministic,
                          precision=16 if opt['train'].get('mixed') else 32,
                          strategy=DDPStrategy(find_unused_parameters=False) if opt['num_gpu'] != 1 else None, fast_dev_run=args.debug)
