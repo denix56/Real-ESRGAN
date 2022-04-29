@@ -16,11 +16,11 @@ class RealESRGANModel(SRGANModel, RealESRNetModel):
         super(RealESRGANModel, self).__init__(opt)
 
     def on_after_batch_transfer(self, batch, dataloader_idx):
-        super().on_after_batch_transfer(batch, dataloader_idx)
+        batch = super().on_after_batch_transfer(batch, dataloader_idx)
 
         gt = batch.get('gt')
         gt_usm = batch.get('gt_usm')
-        if gt:
+        if gt is not None:
             batch['l1_gt'] = gt_usm
             batch['percep_gt'] = gt_usm
             batch['gan_gt'] = gt_usm
@@ -31,3 +31,4 @@ class RealESRGANModel(SRGANModel, RealESRNetModel):
                 batch['percep_gt'] = gt
             if self.opt['gan_gt_usm'] is False:
                 batch['gan_gt'] = gt
+        return batch

@@ -49,13 +49,14 @@ class SRGANModel(SRModel):
         return optimizers
 
     def on_after_batch_transfer(self, batch, dataloader_idx):
-        super().on_after_batch_transfer(batch, dataloader_idx)
+        batch = super().on_after_batch_transfer(batch, dataloader_idx)
 
         gt = batch.get('gt')
-        if gt:
+        if gt is not None:
             batch['l1_gt'] = gt
             batch['percep_gt'] = gt
             batch['gan_gt'] = gt
+        return batch
 
     def training_step(self, batch, batch_idx, optimizer_idx):
         lq = batch['lq']
