@@ -142,6 +142,7 @@ class SRModel(BaseModel):
         path = train_opt.get('pretrain_network_g')
 
         if path is not None:
-            strict = train_opt.get('strict_load_g')
+            strict = train_opt.get('strict_load_g', True)
             cpt = torch.load(path)
             self.net_g.load_state_dict(cpt['state_dict']['net_g'], strict=strict)
+            self.print('net_g loaded.')

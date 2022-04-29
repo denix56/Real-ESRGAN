@@ -78,6 +78,63 @@ class RRDBNet(nn.Module):
         num_grow_ch (int): Channels for each growth. Default: 32.
     """
 
+    # def __init__(self, num_in_ch, num_out_ch, scale=4, num_feat=64, num_block=23, num_grow_ch=32):
+        # super(RRDBNet, self).__init__()
+        # self.scale = scale
+        # if scale == 2:
+            # num_in_ch = num_in_ch * 4
+        # elif scale == 1:
+            # num_in_ch = num_in_ch * 16
+        # self.conv_first = nn.Conv2d(num_in_ch, num_feat, 3, 1, 1)
+        # self.body = make_layer(RRDB, num_block, num_feat=num_feat, num_grow_ch=num_grow_ch)
+        # self.conv_body = nn.Conv2d(num_feat, num_feat, 3, 1, 1)
+        # self.upsample_mode = 'nearest'
+
+        # act_func = lambda: nn.LeakyReLU(negative_slope=0.2, inplace=True)
+
+        # # upsample
+        # self.conv_up1 = nn.Sequential(
+            # nn.Upsample(scale_factor=2, mode=self.upsample_mode),
+            # #nn.PixelShuffle(2),
+            # nn.Conv2d(num_feat, num_feat, 3, 1, 1),
+            # act_func(),
+            # nn.Conv2d(num_feat, num_feat, 3, 1, 1),
+            # act_func(),
+        # )
+        # self.conv_up2 = nn.Sequential(
+            # nn.Upsample(scale_factor=2, mode=self.upsample_mode),
+            # nn.Conv2d(num_feat, num_feat, 3, 1, 1),
+            # act_func(),
+            # nn.Conv2d(num_feat, num_feat, 3, 1, 1),
+            # act_func(),
+        # )
+
+        # self.torgb1 = nn.Conv2d(num_feat, num_out_ch, 3, 1, 1)
+        # self.torgb2 = nn.Conv2d(num_feat, num_out_ch, 3, 1, 1)
+        # self.torgb3 = nn.Conv2d(num_feat, num_out_ch, 3, 1, 1)
+
+    # def forward(self, x):
+        # if self.scale == 2:
+            # feat = F.pixel_unshuffle(x, downscale_factor=2)
+        # elif self.scale == 1:
+            # feat = F.pixel_unshuffle(x, downscale_factor=4)
+        # else:
+            # feat = x
+        # feat = self.conv_first(feat)
+        # body_out = self.body(feat)
+        # body_feat = self.conv_body(body_out)
+        # feat = feat + body_feat
+        # # upsample
+        # rgb1 = self.torgb1(feat)
+        # rgb =  F.interpolate(rgb1, scale_factor=2, mode=self.upsample_mode)
+        # feat = self.conv_up1(feat)
+        # rgb2 = rgb + self.torgb2(feat)
+        # rgb = F.interpolate(rgb2, scale_factor=2, mode=self.upsample_mode)
+        # feat = self.conv_up2(feat)
+        # rgb3 = self.torgb3(feat)
+        # out = rgb + rgb3
+        # return out
+        
     def __init__(self, num_in_ch, num_out_ch, scale=4, num_feat=64, num_block=23, num_grow_ch=32):
         super(RRDBNet, self).__init__()
         self.scale = scale
@@ -88,30 +145,13 @@ class RRDBNet(nn.Module):
         self.conv_first = nn.Conv2d(num_in_ch, num_feat, 3, 1, 1)
         self.body = make_layer(RRDB, num_block, num_feat=num_feat, num_grow_ch=num_grow_ch)
         self.conv_body = nn.Conv2d(num_feat, num_feat, 3, 1, 1)
-        self.upsample_mode = 'nearest'
-
-        act_func = lambda: nn.LeakyReLU(negative_slope=0.2, inplace=True)
-
         # upsample
-        self.conv_up1 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode=self.upsample_mode),
-            #nn.PixelShuffle(2),
-            nn.Conv2d(num_feat, num_feat, 3, 1, 1),
-            act_func(),
-            nn.Conv2d(num_feat, num_feat, 3, 1, 1),
-            act_func(),
-        )
-        self.conv_up2 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode=self.upsample_mode),
-            nn.Conv2d(num_feat, num_feat, 3, 1, 1),
-            act_func(),
-            nn.Conv2d(num_feat, num_feat, 3, 1, 1),
-            act_func(),
-        )
+        self.conv_up1 = nn.Conv2d(num_feat, num_feat, 3, 1, 1)
+        self.conv_up2 = nn.Conv2d(num_feat, num_feat, 3, 1, 1)
+        self.conv_hr = nn.Conv2d(num_feat, num_feat, 3, 1, 1)
+        self.conv_last = nn.Conv2d(num_feat, num_out_ch, 3, 1, 1)
 
-        self.torgb1 = nn.Conv2d(num_feat, num_out_ch, 3, 1, 1)
-        self.torgb2 = nn.Conv2d(num_feat, num_out_ch, 3, 1, 1)
-        self.torgb3 = nn.Conv2d(num_feat, num_out_ch, 3, 1, 1)
+        self.lrelu = nn.LeakyReLU(negative_slope=0.2, inplace=True)
 
     def forward(self, x):
         if self.scale == 2:
@@ -121,19 +161,10 @@ class RRDBNet(nn.Module):
         else:
             feat = x
         feat = self.conv_first(feat)
-        body_out = self.body(feat)
-        body_feat = self.conv_body(body_out)
+        body_feat = self.conv_body(self.body(feat))
         feat = feat + body_feat
         # upsample
-        rgb1 = self.torgb1(feat)
-        rgb =  F.interpolate(rgb1, scale_factor=2, mode=self.upsample_mode)
-        #rgb1 = rgb1.detach()
-        feat = self.conv_up1(feat)
-        rgb2 = rgb + self.torgb2(feat)
-        rgb = F.interpolate(rgb2, scale_factor=2, mode=self.upsample_mode)
-        #rgb2 = rgb2.detach()
-        feat = self.conv_up2(feat)
-        rgb3 = self.torgb3(feat)
-        out = rgb + rgb3
-        #rgb3 = rgb3.detach()
-        return out#, [rgb1, rgb2, rgb3]
+        feat = self.lrelu(self.conv_up1(F.interpolate(feat, scale_factor=2, mode='nearest')))
+        feat = self.lrelu(self.conv_up2(F.interpolate(feat, scale_factor=2, mode='nearest')))
+        out = self.conv_last(self.lrelu(self.conv_hr(feat)))
+        return out

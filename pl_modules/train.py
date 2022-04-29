@@ -1,3 +1,4 @@
+import os
 import os.path as osp
 
 import torch
@@ -42,6 +43,11 @@ def train_pipeline(root_path):
     # parse options, set distributed setting, set random seed
     opt, args = parse_options(root_path, is_train=True)
     opt['root_path'] = root_path
+    
+    hub_dir = osp.join(root_path, 'hub')
+    os.makedirs(hub_dir, exist_ok=True)
+    torch.hub.set_dir(hub_dir)
+    
     resume_ckpt_path = find_resume_ckpt(opt)
 
     pl.seed_everything(opt['manual_seed'], workers=True)

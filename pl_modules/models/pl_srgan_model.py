@@ -1,4 +1,7 @@
+from copy import deepcopy
+
 import torch
+import torch.nn.functional as F
 from pl_modules import PL_MODEL_REGISTRY
 from pl_modules.archs import build_network
 from basicsr.losses import build_loss
@@ -13,7 +16,11 @@ class SRGANModel(SRModel):
     def __init__(self, opt):
         super().__init__(opt)
         # define network net_d
-        self.net_d = build_network(self.opt['network_d'])
+        self.cat_imgs = self.opt['train'].get('cat_imgs', False)
+        opt_d = deepcopy(self.opt['network_d'])
+        if self.cat_imgs:
+            opt_d['num_in_ch'] *= 2
+        self.net_d = build_network(opt_d)
 
         train_opt = self.opt['train']
         self.net_d_iters = train_opt.get('net_d_iters', 1)
@@ -25,7 +32,7 @@ class SRGANModel(SRModel):
 
         train_opt = self.opt['train']
         if train_opt.get('gan_opt'):
-            self.cri_gan = build_loss(train_opt['gan_opt']).to(self.device)
+            self.cri_gan = build_loss(train_opt['gan_opt'])
 
     @overrides
     def _setup_optimizers(self):
@@ -33,11 +40,11 @@ class SRGANModel(SRModel):
         optimizers = []
         # optimizer g
         optim_type = train_opt['optim_g'].pop('type')
-        optimizer_g = self.get_optimizer(optim_type, self.net_g.parameters(), **train_opt['optim_g'])
+        optimizer_g = self._get_optimizer(optim_type, self.net_g.parameters(), **train_opt['optim_g'])
         optimizers.append(optimizer_g)
         # optimizer d
         optim_type = train_opt['optim_d'].pop('type')
-        optimizer_d = self.get_optimizer(optim_type, self.net_d.parameters(), **train_opt['optim_d'])
+        optimizer_d = self._get_optimizer(optim_type, self.net_d.parameters(), **train_opt['optim_d'])
         optimizers.append(optimizer_d)
         return optimizers
 
@@ -75,6 +82,9 @@ class SRGANModel(SRModel):
                     l_g_total += l_g_style
                     loss_dict['l_g_style'] = l_g_style
             # gan loss
+            if self.cat_imgs:
+                lq_scaled = F.interpolate(lq, size=output.shape[-2:], mode='bilinear')
+                output = torch.cat((lq_scaled, output), dim=1)
             fake_g_pred = self.net_d(output)
             l_g_gan = self.cri_gan(fake_g_pred, True, is_disc=False)
             l_g_total += l_g_gan
@@ -87,13 +97,20 @@ class SRGANModel(SRModel):
             l_d_total = 0
             loss_dict = {}
 
+            output = self.net_g(lq)
+            output_org = output
+
+            if self.cat_imgs:
+                lq_scaled = F.interpolate(lq, size=gan_gt.shape[-2:], mode='bilinear')
+                gan_gt = torch.cat((lq_scaled, gan_gt), dim=1)
+                output = torch.cat((lq_scaled, output), dim=1)
+
             real_d_pred = self.net_d(gan_gt)
             l_d_real = self.cri_gan(real_d_pred, True, is_disc=True)
             loss_dict['l_d_real'] = l_d_real
             loss_dict['out_d_real'] = torch.mean(real_d_pred.detach())
             l_d_total += l_d_real
             # fake
-            output = self.net_g(lq)
             fake_d_pred = self.net_d(output.detach())
             l_d_fake = self.cri_gan(fake_d_pred, False, is_disc=True)
             loss_dict['l_d_fake'] = l_d_fake
@@ -101,8 +118,8 @@ class SRGANModel(SRModel):
             l_d_total += l_d_fake
             self.log_dict(loss_dict)
 
-            if self.global_step % 500 == 0:
-                self._save_images(lq, output, gt, prefix='train')
+            if self.global_step % 250 == 0:
+                self._save_images(lq, output_org, gt, prefix='train')
 
             return l_d_total
 
@@ -117,11 +134,12 @@ class SRGANModel(SRModel):
             optimizer.step(closure=optimizer_closure)
 
     def _load_weights(self):
-        super().__init__()
+        super()._load_weights()
         train_opt = self.opt['train']
         path = train_opt.get('pretrain_network_d')
 
         if path is not None:
-            strict = train_opt.get('strict_load_d')
+            strict = train_opt.get('strict_load_d', True)
             cpt = torch.load(path)
             self.net_d.load_state_dict(cpt['state_dict']['net_d'], strict=strict)
+            self.print('net_d loaded.')

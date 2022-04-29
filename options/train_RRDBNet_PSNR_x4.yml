@@ -10,8 +10,10 @@ datasets:
   train:
     name: DF2K+OST
     type: PairedImageDataset
-    dataroot_gt: data/DF2K/DF2K_HR_sub
+    dataroot_gt: data/DF2K/DF2K_HR_sub2
     dataroot_lq: data/DF2K/DF2K_LR_bicubic_sub
+    persistent_workers: true
+    pin_memory: true
     # (for lmdb)
     # dataroot_gt: datasets/DIV2K/DIV2K_train_HR_sub.lmdb
     # dataroot_lq: datasets/DIV2K/DIV2K_train_LR_bicubic_X4_sub.lmdb
@@ -27,8 +29,8 @@ datasets:
 
     # data loader
     use_shuffle: true
-    num_worker_per_gpu: 6
-    batch_size_per_gpu: 16
+    num_worker_per_gpu: 4
+    batch_size_per_gpu: 32
     dataset_enlarge_ratio: 100
     prefetch_mode: ~
 
@@ -81,7 +83,7 @@ train:
 # validation settings
 val:
   val_freq: !!float 5e3
-  save_img: false
+  save_img: true
 
   metrics:
     psnr: # metric name, can be arbitrary
