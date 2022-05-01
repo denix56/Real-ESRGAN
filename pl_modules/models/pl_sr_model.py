@@ -28,9 +28,11 @@ class SRModel(BaseModel):
             for name, opt_ in with_metrics.items():
                 opt_ = deepcopy(opt_)
                 opt_['compute_on_step'] = False
-                if name == 'psnr':
+                opt_['input_order'] = 'CHW'
+                if opt_['type'] == 'calculate_psnr':
                     opt_['data_range'] = 1.0
-                    opt_['input_order'] = 'CHW'
+                elif opt_['type'] == 'calculate_fid':
+                    opt_['reset_real_features'] = False
                 val_metrics.append(build_metric(opt_))
 
         self.val_metrics = MetricCollection(val_metrics, prefix='val/')

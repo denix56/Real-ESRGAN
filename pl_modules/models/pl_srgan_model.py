@@ -133,14 +133,7 @@ class SRGANModel(SRModel):
                 optimizer_closure()
         elif optimizer_idx == 1:
             optimizer.step(closure=optimizer_closure)
-
+            
     def _load_weights(self):
         super()._load_weights()
-        train_opt = self.opt['train']
-        path = train_opt.get('pretrain_network_d')
-
-        if path is not None:
-            strict = train_opt.get('strict_load_d', True)
-            cpt = torch.load(path)
-            self.net_d.load_state_dict(cpt['state_dict']['net_d'], strict=strict)
-            self.print('net_d loaded.')
+        self._load_network(self.net_d, 'd')

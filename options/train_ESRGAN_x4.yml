@@ -1,5 +1,5 @@
 # general settings
-name: 052_ESRGAN_x4_f64b23_DIV2K_400k_B16G1_051pretrain_wandb
+name: 052_ESRGAN_x4_f64b23_DIV2K_400k_B16G1_051pretrain_wandb_3
 model_type: ESRGANModel
 scale: 4
 num_gpu: auto  # set num_gpu: 0 for cpu mode
@@ -57,7 +57,7 @@ network_d:
 
 # path
 path:
-  pretrain_network_g: experiments/051_RRDBNet_PSNR_x4_f64b23_DIV2K_1000k_B16G1_wandb/models/last.ckpt
+  pretrain_network_g: experiments/051_RRDBNet_PSNR_x4_f64b23_DIV2K_1000k_B16G1_wandb_3/models/last.ckpt
   strict_load_g: true
   resume_state: ~
 
@@ -82,6 +82,7 @@ train:
   total_iter: 400000
   warmup_iter: -1  # no warm up
   mixed: true
+  #cat_imgs: true
 
   # losses
   pixel_opt:
