@@ -51,13 +51,13 @@ network_g:
   num_block: 23
 
 network_d:
-  type: VGGStyleDiscriminator
+  type: MSGDiscriminator
   num_in_ch: 3
   num_feat: 64
 
 # path
 path:
-  pretrain_network_g: experiments/051_RRDBNet_PSNR_x4_f64b23_DIV2K_1000k_B16G1_wandb_3/models/last.ckpt
+  pretrain_network_g: experiments/051_RRDBNet_PSNR_x4_f64b23_DIV2K_1000k_B16G1_wandb_2/models/last.ckpt
   strict_load_g: true
   resume_state: ~
 

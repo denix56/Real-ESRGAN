@@ -1,6 +1,8 @@
 import os
 import os.path as osp
 from copy import deepcopy
+from collections import OrderedDict
+
 import torch
 import torch.nn.functional as F
 from pytorch_lightning.utilities import rank_zero_only
@@ -164,11 +166,20 @@ class SRModel(BaseModel):
                 save_image(joined, osp.join(self.opt['path']['visualization'], prefix, 'image_{}.png'.format(i)))
 
     def _load_weights(self):
+        self._load_network(self.net_g, 'g')
+
+    def _load_network(self, net, postfix):
         train_opt = self.opt['train']
-        path = train_opt.get('pretrain_network_g')
+        path = train_opt.get(f'pretrain_network_{postfix}')
 
         if path is not None:
-            strict = train_opt.get('strict_load_g', True)
+            strict = train_opt.get(f'strict_load_{postfix}', True)
             cpt = torch.load(path)
-            self.net_g.load_state_dict(cpt['state_dict']['net_g'], strict=strict)
-            self.print('net_g loaded.')
+            weights = OrderedDict()
+            for k, v in cpt['state_dict'].items():
+                keys = k.split('.')
+                if keys[0] == f'net_{postfix}':
+                    weights['.'.join(keys[1:])] = v
+            net.load_state_dict(weights, strict=strict)
+            self.print(f'net_{postfix} loaded.')
+

@@ -47,6 +47,8 @@ class MSGDiscriminator(nn.Module):
 
         act_func = lambda: nn.LeakyReLU(negative_slope=0.2, inplace=True)
 
+        from_rgb = nn.Conv2d(num_in_ch, num_feat, 3, 1, 1)
+
         layers = []
         for i, res in enumerate(self.block_resolutions):
             num_feat_new = min(num_feat * 2, 512)
@@ -55,7 +57,7 @@ class MSGDiscriminator(nn.Module):
                 num_feat = num_feat_new
             layers.append(block)
         self.body = nn.Sequential(
-            nn.Conv2d(num_in_ch, num_feat, 3, 1, 1),
+            from_rgb,
             act_func(),
             *layers,
             nn.Flatten(),
