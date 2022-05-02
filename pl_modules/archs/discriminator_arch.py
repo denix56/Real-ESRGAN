@@ -3,10 +3,12 @@ from torch import nn
 from torch.nn import functional as F
 from torch.nn.utils import spectral_norm
 
+import functools
+
 import numpy as np
 
 
-
+@PL_ARCH_REGISTRY.register()
 class NLayerDiscriminator(nn.Module):
     """Defines a PatchGAN discriminator"""
 
@@ -52,7 +54,6 @@ class NLayerDiscriminator(nn.Module):
     def forward(self, input):
         """Standard forward."""
         return self.model(input)
-
 
 
 class DiscriminatorBlock(nn.Module):

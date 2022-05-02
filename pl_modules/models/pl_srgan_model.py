@@ -19,9 +19,12 @@ class SRGANModel(SRModel):
         self.cat_imgs = self.opt['train'].get('cat_imgs', False)
         opt_d = deepcopy(self.opt['network_d'])
         if self.cat_imgs:
-            opt_d['num_in_ch'] *= 2
+            if 'num_in_ch' in opt_d:
+                opt_d['num_in_ch'] *= 2
+            elif 'input_nc' in opt_d:
+                opt_d['input_nc'] *= 2
         if opt_d['type'] == 'NLayerDiscriminator':
-            opt_d['norm_layer'] = nn.InstanceNorm2d
+            opt_d['norm_layer'] = torch.nn.InstanceNorm2d
         self.net_d = build_network(opt_d)
 
         train_opt = self.opt['train']
