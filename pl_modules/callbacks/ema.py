@@ -48,7 +48,8 @@ class EMA(pl.Callback):
             patterns_to_ignore = ("metrics1", "metrics2")
             return dict(filter(lambda i: i[0].startswith(patterns), pl_module.state_dict().items()))
         """
-        return pl_module.state_dict()
+        patterns = ("val_metrics")
+        return dict(filter(lambda i: not i[0].startswith(patterns), pl_module.state_dict().items()))
 
     @overrides
     def on_train_start(self, trainer: "pl.Trainer", pl_module: pl.LightningModule) -> None:

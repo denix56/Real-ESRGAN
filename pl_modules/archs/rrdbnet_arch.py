@@ -19,15 +19,13 @@ class ResidualDenseBlock(nn.Module):
         act_func = lambda: nn.LeakyReLU(negative_slope=0.2, inplace=True)
 
         num_interm_layers = 4
-        norm_layer = lambda num_feats: nn.InstanceNorm2d(num_feats)
 
         self.layers = nn.ModuleList(
             [nn.Sequential(nn.Conv2d(num_feat + i * num_grow_ch, num_grow_ch, 3, 1, 1), 
-            norm_layer(num_grow_ch), 
+            #norm_layer(num_grow_ch), 
             act_func()) for i in range(num_interm_layers)]
         )
-        self.last_conv = nn.Sequential(nn.Conv2d(num_feat + num_interm_layers * num_grow_ch, num_feat, 3, 1, 1)
-        )
+        self.last_conv = nn.Conv2d(num_feat + num_interm_layers * num_grow_ch, num_feat, 3, 1, 1)
         # initialization
         default_init_weights([self.layers, self.last_conv], 0.1)
 
@@ -90,7 +88,7 @@ class RRDBNet(nn.Module):
         self.body = make_layer(RRDB, num_block, num_feat=num_feat, num_grow_ch=num_grow_ch)
         self.conv_body = nn.Conv2d(num_feat, num_feat, 3, 1, 1)
         self.upsample_mode = 'bilinear'
-        norm_layer = lambda num_feats: nn.InstanceNorm2d(num_feats)
+        #norm_layer = lambda num_feats: nn.InstanceNorm2d(num_feats)
 
         act_func = lambda: nn.LeakyReLU(negative_slope=0.2, inplace=True)
 
@@ -98,19 +96,19 @@ class RRDBNet(nn.Module):
         self.conv_up1 = nn.Sequential(
             nn.Upsample(scale_factor=2, mode=self.upsample_mode),
             nn.Conv2d(num_feat, num_feat, 3, 1, 1),
-            norm_layer(num_feat),
+            #norm_layer(num_feat),
             act_func(),
             nn.Conv2d(num_feat, num_feat, 3, 1, 1),
-            norm_layer(num_feat),
+            #norm_layer(num_feat),
             act_func(),
         )
         self.conv_up2 = nn.Sequential(
             nn.Upsample(scale_factor=2, mode=self.upsample_mode),
             nn.Conv2d(num_feat, num_feat, 3, 1, 1),
-            norm_layer(num_feat),
+            #norm_layer(num_feat),
             act_func(),
             nn.Conv2d(num_feat, num_feat, 3, 1, 1),
-            norm_layer(num_feat),
+            #norm_layer(num_feat),
             act_func(),
         )
 

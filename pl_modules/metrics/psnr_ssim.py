@@ -1,3 +1,4 @@
+import torch
 import torchmetrics
 from pl_modules.registry import PL_METRIC_REGISTRY
 from pl_modules.metrics.metric_util import rgb2ycbcr
@@ -29,8 +30,8 @@ class BaseMetric:
 # Make consistent with BasicSR
 class PSNR(BaseMetric, torchmetrics.PeakSignalNoiseRatio):
     def __init__(self, crop_border:int, input_order:str='HWC', test_y_channel:bool=False, *args, **kwargs):
-        super(BaseMetric, self).__init__(crop_border, input_order, test_y_channel)
-        super(torchmetrics.PeakSignalNoiseRatio, self).__init__(*args, **kwargs)
+        super().__init__(crop_border, input_order, test_y_channel)
+        super(BaseMetric, self).__init__(*args, **kwargs)
 
     def update(self, preds, target):
         preds, target = self.prepare(preds, target)
@@ -40,8 +41,8 @@ class PSNR(BaseMetric, torchmetrics.PeakSignalNoiseRatio):
 # Make consistent with BasicSR
 class SSIM(BaseMetric, torchmetrics.StructuralSimilarityIndexMeasure):
     def __init__(self, crop_border:int, input_order:str='HWC', test_y_channel:bool=False, *args, **kwargs):
-        super(BaseMetric, self).__init__(crop_border, input_order, test_y_channel)
-        super(torchmetrics.StructuralSimilarityIndexMeasure, self).__init__(*args, **kwargs)
+        super().__init__(crop_border, input_order, test_y_channel)
+        super(BaseMetric, self).__init__(*args, **kwargs)
 
     def update(self, preds, target):
         preds, target = self.prepare(preds, target)
@@ -51,25 +52,28 @@ class SSIM(BaseMetric, torchmetrics.StructuralSimilarityIndexMeasure):
 # Make consistent with BasicSR
 class LPIPS(BaseMetric, torchmetrics.image.lpip.LearnedPerceptualImagePatchSimilarity):
     def __init__(self, crop_border:int, input_order:str='HWC', test_y_channel:bool=False, *args, **kwargs):
-        super(BaseMetric, self).__init__(crop_border, input_order, test_y_channel)
-        super(torchmetrics.image.lpip.LearnedPerceptualImagePatchSimilarity, self).__init__(*args, **kwargs)
+        super().__init__(crop_border, input_order, test_y_channel)
+        super(BaseMetric, self).__init__(*args, **kwargs)
 
     def update(self, preds, target):
         preds, target = self.prepare(preds, target)
+        preds = preds.clamp(0, 1) * 2 - 1
+        target = target.clamp(0, 1) * 2 - 1
         return super().update(preds, target)
 
 
 # Make consistent with BasicSR
-class FID(BaseMetric, torchmetrics.FrechetInceptionDistance):
+class FID(BaseMetric, torchmetrics.image.fid.FrechetInceptionDistance):
     def __init__(self, crop_border:int, input_order:str='HWC', test_y_channel:bool=False, *args, **kwargs):
-        super(BaseMetric, self).__init__(crop_border, input_order, test_y_channel)
-        super(torchmetrics.FrechetInceptionDistance, self).__init__(*args, **kwargs)
+        super().__init__(crop_border, input_order, test_y_channel)
+        super(BaseMetric, self).__init__(*args, **kwargs)
 
     def update(self, preds, target):
         preds, target = self.prepare(preds, target)
+        preds = (preds*255).clamp(0, 255).to(torch.uint8)
+        target = (target * 255).clamp(0, 255).to(torch.uint8)
         super().update(preds, real=False)
         super().update(target, real=True)
-
 
 
 @PL_METRIC_REGISTRY.register()

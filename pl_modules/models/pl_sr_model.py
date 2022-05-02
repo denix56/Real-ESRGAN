@@ -23,6 +23,7 @@ class SRModel(BaseModel):
         self.net_g = build_network(opt['network_g'])
 
         val_metrics = []
+        val_metrics_step = []
         with_metrics = self.opt['val'].get('metrics')
         if with_metrics:
             for name, opt_ in with_metrics.items():
@@ -33,9 +34,15 @@ class SRModel(BaseModel):
                     opt_['data_range'] = 1.0
                 elif opt_['type'] == 'calculate_fid':
                     opt_['reset_real_features'] = False
-                val_metrics.append(build_metric(opt_))
+                elif opt_['type'] == 'calculate_ssim':
+                    opt_['compute_on_step'] = True
+                if opt_['compute_on_step']:
+                    val_metrics_step.append(build_metric(opt_))
+                else:
+                    val_metrics.append(build_metric(opt_))
 
         self.val_metrics = MetricCollection(val_metrics, prefix='val/')
+        self.val_metrics_step = MetricCollection(val_metrics_step, prefix='val/') if val_metrics_step else None
         self.gather_images = GatherImages()
 
     def setup(self, stage=None):
@@ -118,8 +125,25 @@ class SRModel(BaseModel):
         self.val_metrics.reset()
 
         lrs, lr_hrs, hrs = self.gather_images.compute()
+        self._compute_step_metrics(lr_hrs, hrs)
         self._save_images(lrs, lr_hrs, hrs, prefix='val')
         self.gather_images.reset()
+
+    @rank_zero_only
+    @torch.no_grad()
+    def _compute_step_metrics(self, preds, gts):
+        if self.val_metrics_step is not None:
+            metrics = {}
+            for i, (pred, gt) in enumerate(zip(preds, gts)):
+                metrics_i = self.val_metrics_step(pred.unsqueeze(0), gt.unsqueeze(0))
+                for k, v in metrics_i.items():
+                    if k not in metrics:
+                        metrics[k] = []
+                    metrics[k].append(v)
+                self.val_metrics_step.reset()
+            for metric, vals in metrics.items():
+                metrics[metric] = torch.stack(metrics[metric]).mean()
+            self.log_dict(metrics)
 
     @rank_zero_only
     @torch.no_grad()
