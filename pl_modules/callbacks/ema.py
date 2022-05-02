@@ -48,7 +48,7 @@ class EMA(pl.Callback):
             patterns_to_ignore = ("metrics1", "metrics2")
             return dict(filter(lambda i: i[0].startswith(patterns), pl_module.state_dict().items()))
         """
-        patterns = ("val_metrics")
+        patterns = ("val_metrics", 'cri_')
         return dict(filter(lambda i: not i[0].startswith(patterns), pl_module.state_dict().items()))
 
     @overrides

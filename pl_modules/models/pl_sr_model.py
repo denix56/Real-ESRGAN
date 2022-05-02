@@ -169,11 +169,11 @@ class SRModel(BaseModel):
         self._load_network(self.net_g, 'g')
 
     def _load_network(self, net, postfix):
-        train_opt = self.opt['train']
-        path = train_opt.get(f'pretrain_network_{postfix}')
+        path_opt = self.opt['path']
+        path = path_opt.get(f'pretrain_network_{postfix}')
 
         if path is not None:
-            strict = train_opt.get(f'strict_load_{postfix}', True)
+            strict = path_opt.get(f'strict_load_{postfix}', True)
             cpt = torch.load(path)
             weights = OrderedDict()
             for k, v in cpt['state_dict'].items():

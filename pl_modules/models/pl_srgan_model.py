@@ -20,6 +20,8 @@ class SRGANModel(SRModel):
         opt_d = deepcopy(self.opt['network_d'])
         if self.cat_imgs:
             opt_d['num_in_ch'] *= 2
+        if opt_d['type'] == 'NLayerDiscriminator':
+            opt_d['norm_layer'] = nn.InstanceNorm2d
         self.net_d = build_network(opt_d)
 
         train_opt = self.opt['train']

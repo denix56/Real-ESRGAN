@@ -57,7 +57,7 @@ def train_pipeline(root_path):
     data = PLDataset(opt)
     model = build_model(opt)
 
-    print('Path: {}'.format(opt['path']))
+    
 
     ms = ModelSummary(-1)
     mcp = ModelCheckpoint(opt['path']['models'], monitor='val/PSNR', mode='max', save_last=True)
@@ -78,7 +78,7 @@ def train_pipeline(root_path):
     trainer = pl.Trainer(logger=logger, callbacks=cbs, devices=opt['num_gpu'], accelerator='gpu',
                          max_steps=total_iters, benchmark=True, deterministic=deterministic,
                          precision=16 if opt['train'].get('mixed') else 32,
-                         strategy=DDPStrategy(find_unused_parameters=True) if opt['num_gpu'] != 1 else None, fast_dev_run=4)
+                         strategy=DDPStrategy(find_unused_parameters=True) if opt['num_gpu'] != 1 else None, fast_dev_run=args.debug)
     if deterministic:
         # We have bilinear interpolation somewhere
         torch.use_deterministic_algorithms(True, warn_only=True)
@@ -86,5 +86,6 @@ def train_pipeline(root_path):
     if resume_ckpt_path is None and trainer.is_global_zero:
         make_exp_dirs(opt)
         copy_opt_file(args.opt, opt['path']['experiments_root'])
+    print('Path: {}'.format(opt['path']['experiments_root']))
 
     trainer.fit(model, datamodule=data, ckpt_path=resume_ckpt_path)
