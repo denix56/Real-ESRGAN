@@ -3,6 +3,72 @@ from torch import nn
 from torch.nn import functional as F
 from torch.nn.utils import spectral_norm
 
+import numpy as np
+
+
+class DiscriminatorBlock(nn.Module):
+    def __init__(self, in_num_feat, out_num_feat, act_func):
+        super().__init__()
+        self.main = nn.Sequential(
+                nn.Conv2d(in_num_feat, in_num_feat, 3, 1, 1),
+                act_func(),
+                nn.Conv2d(in_num_feat, out_num_feat, 3, 1, 1),
+                act_func(),
+                nn.Upsample(scale_factor=0.5, mode='bilinear')
+            )
+        self.skip =  nn.Sequential(
+            nn.Conv2d(in_num_feat, out_num_feat, 1, 1, 0, bias=False),
+            nn.Upsample(scale_factor=0.5, mode='bilinear')
+        )
+
+    def forward(self, x):
+        skip = self.skip(x)
+        out = self.main(x)
+        return (out + skip) / np.sqrt(2)
+
+
+@PL_ARCH_REGISTRY.register()
+class MSGDiscriminator(nn.Module):
+    """VGG style discriminator with input size 128 x 128 or 256 x 256.
+    It is used to train SRGAN, ESRGAN, and VideoGAN.
+    Args:
+        num_in_ch (int): Channel number of inputs. Default: 3.
+        num_feat (int): Channel number of base intermediate features.Default: 64.
+    """
+
+    def __init__(self, num_in_ch, num_feat, input_size=128):
+        super(MSGDiscriminator, self).__init__()
+        self.input_size = input_size
+        assert (self.input_size & (self.input_size-1) == 0) and self.input_size != 0, (
+            f'input size must be power of 2, but received {input_size}')
+        in_size_log_2 = int(np.log2(input_size))
+
+        self.block_resolutions = [2**i for i in range(in_size_log_2, 2, -1)]
+
+        act_func = lambda: nn.LeakyReLU(negative_slope=0.2, inplace=True)
+
+        layers = []
+        for i, res in enumerate(self.block_resolutions):
+            num_feat_new = min(num_feat * 2, 512)
+            block = DiscriminatorBlock(num_feat, num_feat_new, act_func)
+            if i < len(self.block_resolutions) - 1:
+                num_feat = num_feat_new
+            layers.append(block)
+        self.body = nn.Sequential(
+            nn.Conv2d(num_in_ch, num_feat, 3, 1, 1),
+            act_func(),
+            *layers,
+            nn.Flatten(),
+            nn.Linear(num_feat*16, num_feat),
+            act_func(),
+            nn.Linear(num_feat, 1)
+        )
+
+    def forward(self, x):
+        assert x.size(2) == self.input_size, (f'Input size must be identical to input_size, but received {x.size()}.')
+        out = self.body(x)
+        return out
+
 
 @PL_ARCH_REGISTRY.register()
 class VGGStyleDiscriminator(nn.Module):
@@ -145,4 +211,5 @@ class UNetDiscriminatorSN(nn.Module):
         out = self.conv9(out)
 
         return out
+
 
