@@ -39,17 +39,19 @@ def augment_add(imgs, font_paths, text=True):
                     font = ImageFont.truetype(font_path, size_c)
                     fonts.append(font)
                     scales.append(scale)
+
+                imgs_new = []
+                for i, (font, scale, img) in enumerate(zip(fonts, scales, imgs)):
+                    img = Image.fromarray((img * 255).astype(np.uint8))
+                    coords_c = (coords * scale).astype(int)
+                    img_editable = ImageDraw.Draw(img)
+                    img_editable.fontmode = "PA"
+                    img_editable.text(tuple(coords_c), text, tuple(color), font=font)
+                    imgs_new.append(np.array(img) / 255.)
+                imgs = imgs_new
                 break
             except OSError:
                 pass
-
-        for i, (font, scale, img) in enumerate(zip(fonts, scales, imgs)):
-            img = Image.fromarray((img*255).astype(np.uint8))
-            coords_c = (coords * scale).astype(int)
-            img_editable = ImageDraw.Draw(img)
-            img_editable.fontmode = "PA"
-            img_editable.text(tuple(coords_c), text, tuple(color), font=font)
-            imgs[i] = np.array(img) / 255.
     if len(imgs) == 1:
         imgs = imgs[0]
     return imgs
