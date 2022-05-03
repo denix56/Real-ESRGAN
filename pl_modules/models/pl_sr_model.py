@@ -10,7 +10,6 @@ from torchvision.utils import save_image
 from torchmetrics import MetricCollection
 from pl_modules.models.pl_base_model import BaseModel
 from pl_modules import PL_MODEL_REGISTRY
-#from basicsr.archs import build_network
 from pl_modules.archs import build_network
 from basicsr.losses import build_loss
 from overrides import overrides
@@ -46,6 +45,15 @@ class SRModel(BaseModel):
         self.val_metrics = MetricCollection(val_metrics, prefix='val/')
         self.val_metrics_step = MetricCollection(val_metrics_step, prefix='val/') if val_metrics_step else None
         self.gather_images = GatherImages()
+
+        train_ds_opt = opt['datasets'].get('train')
+        if train_ds_opt:
+            gt_size = train_ds_opt['gt_size']
+            batch_size = train_ds_opt['batch_size_per_gpu']
+            in_channels = opt['network_g']['num_in_ch']
+            scale = opt['scale']
+            self.example_input_array = {'lq': torch.zeros(batch_size, in_channels, gt_size//scale, gt_size//scale)
+                                        }
 
     def setup(self, stage=None):
         super().setup(stage)
@@ -83,6 +91,11 @@ class SRModel(BaseModel):
         optimizer_g = self._get_optimizer(optim_type, optim_params, **train_opt['optim_g'])
         return [optimizer_g]
 
+    def forward(self, batch):
+        lq = batch['lq']
+        output = self.net_g(lq)
+        return output
+
     def training_step(self, batch, batch_idx):
         lq = batch['lq']
         gt = batch.get('gt')
@@ -118,6 +131,8 @@ class SRModel(BaseModel):
         gt = batch['gt']
 
         output = self.net_g(lq)
+        if isinstance(output, list):
+            output = output[-1]
         self.val_metrics(output, gt)
         self.gather_images(lq, output, gt)
 

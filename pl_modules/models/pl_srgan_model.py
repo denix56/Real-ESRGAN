@@ -63,6 +63,15 @@ class SRGANModel(SRModel):
             batch['gan_gt'] = gt
         return batch
 
+    def forward(self, batch):
+        lq = batch['lq']
+        output = self.net_g(lq)
+        if self.cat_imgs:
+            lq_scaled = F.interpolate(lq, size=output.shape[-2:], mode='bilinear')
+            output = torch.cat((lq_scaled, output), dim=1)
+        output = self.net_d(output)
+        return output
+
     def training_step(self, batch, batch_idx, optimizer_idx):
         lq = batch['lq']
         gt = batch.get('gt')
@@ -124,7 +133,7 @@ class SRGANModel(SRModel):
             l_d_total += l_d_fake
             self.log_dict(loss_dict)
 
-            if self.global_step % 250 == 0:
+            if batch_idx % 250 == 0:
                 self._save_images(lq, output_org, gt, prefix='train')
 
             return l_d_total

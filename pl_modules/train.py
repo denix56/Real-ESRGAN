@@ -3,7 +3,7 @@ import os.path as osp
 
 import torch
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelSummary, ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.strategies.ddp import DDPStrategy
 
@@ -11,6 +11,7 @@ from basicsr.train import parse_options, copy_opt_file
 from basicsr.utils import make_exp_dirs, scandir
 
 from pl_modules.callbacks.ema import EMA
+from pl_modules.callbacks.model_summary import ModelSummary
 from pl_modules.models import build_model
 from pl_modules.data.pl_dataset import PLDataset
 
@@ -57,8 +58,6 @@ def train_pipeline(root_path):
     data = PLDataset(opt)
     model = build_model(opt)
 
-    
-
     ms = ModelSummary(-1)
     mcp = ModelCheckpoint(opt['path']['models'], monitor='val/PSNR', mode='max', save_last=True)
     cbs = [ms, mcp]
@@ -69,7 +68,7 @@ def train_pipeline(root_path):
         cbs.append(ema)
 
     if opt['logger'].get('use_tb_logger'):
-        logger = TensorBoardLogger(opt['root_path'], name='tb_logs')
+        logger = TensorBoardLogger(opt['root_path'], name='tb_logs', log_graph=True)
     else:
         logger = None
 
@@ -78,7 +77,8 @@ def train_pipeline(root_path):
     trainer = pl.Trainer(logger=logger, callbacks=cbs, devices=opt['num_gpu'], accelerator='gpu',
                          max_steps=total_iters, benchmark=True, deterministic=deterministic,
                          precision=16 if opt['train'].get('mixed') else 32,
-                         strategy=DDPStrategy(find_unused_parameters=True) if opt['num_gpu'] != 1 else None, fast_dev_run=args.debug)
+                         strategy=DDPStrategy(find_unused_parameters=True) if opt['num_gpu'] != 1 else None,
+                         fast_dev_run=False)
     if deterministic:
         # We have bilinear interpolation somewhere
         torch.use_deterministic_algorithms(True, warn_only=True)

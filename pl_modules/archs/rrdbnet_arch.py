@@ -77,7 +77,7 @@ class RRDBNet(nn.Module):
         num_grow_ch (int): Channels for each growth. Default: 32.
     """
 
-    def __init__(self, num_in_ch, num_out_ch, scale=4, num_feat=64, num_block=23, num_grow_ch=32):
+    def __init__(self, num_in_ch, num_out_ch, scale=4, num_feat=64, num_block=23, num_grow_ch=32, ret_all=False):
         super(RRDBNet, self).__init__()
         self.scale = scale
         if scale == 2:
@@ -88,93 +88,12 @@ class RRDBNet(nn.Module):
         self.body = make_layer(RRDB, num_block, num_feat=num_feat, num_grow_ch=num_grow_ch)
         self.conv_body = nn.Conv2d(num_feat, num_feat, 3, 1, 1)
         self.upsample_mode = 'bilinear'
-        #norm_layer = lambda num_feats: nn.InstanceNorm2d(num_feats)
 
         act_func = lambda: nn.LeakyReLU(negative_slope=0.2, inplace=True)
 
         # upsample
         self.conv_up1 = nn.Sequential(
             nn.Upsample(scale_factor=2, mode=self.upsample_mode),
-            nn.Conv2d(num_feat, num_feat, 3, 1, 1),
-            #norm_layer(num_feat),
-            act_func(),
-            nn.Conv2d(num_feat, num_feat, 3, 1, 1),
-            #norm_layer(num_feat),
-            act_func(),
-        )
-        self.conv_up2 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode=self.upsample_mode),
-            nn.Conv2d(num_feat, num_feat, 3, 1, 1),
-            #norm_layer(num_feat),
-            act_func(),
-            nn.Conv2d(num_feat, num_feat, 3, 1, 1),
-            #norm_layer(num_feat),
-            act_func(),
-        )
-
-        self.torgb1 = nn.Conv2d(num_feat, num_out_ch, 3, 1, 1)
-        self.torgb2 = nn.Conv2d(num_feat, num_out_ch, 3, 1, 1)
-        self.torgb3 = nn.Conv2d(num_feat, num_out_ch, 3, 1, 1)
-
-    def forward(self, x):
-        if self.scale == 2:
-            feat = F.pixel_unshuffle(x, downscale_factor=2)
-        elif self.scale == 1:
-            feat = F.pixel_unshuffle(x, downscale_factor=4)
-        else:
-            feat = x
-        feat = self.conv_first(feat)
-        body_out = self.body(feat)
-        body_feat = self.conv_body(body_out)
-        feat = feat + body_feat
-        # upsample
-        rgb1 = self.torgb1(feat)
-        rgb =  F.interpolate(rgb1, scale_factor=2, mode=self.upsample_mode)
-        feat = self.conv_up1(feat)
-        rgb2 = rgb + self.torgb2(feat)
-        rgb = F.interpolate(rgb2, scale_factor=2, mode=self.upsample_mode)
-        feat = self.conv_up2(feat)
-        rgb3 = self.torgb3(feat)
-        out = rgb + rgb3
-        return out
-        
-        
-@PL_ARCH_REGISTRY.register()
-class RRDBNet2(nn.Module):
-    """Networks consisting of Residual in Residual Dense Block, which is used
-    in ESRGAN.
-    ESRGAN: Enhanced Super-Resolution Generative Adversarial Networks.
-    We extend ESRGAN for scale x2 and scale x1.
-    Note: This is one option for scale 1, scale 2 in RRDBNet.
-    We first employ the pixel-unshuffle (an inverse operation of pixelshuffle to reduce the spatial size
-    and enlarge the channel size before feeding inputs into the main ESRGAN architecture.
-    Args:
-        num_in_ch (int): Channel number of inputs.
-        num_out_ch (int): Channel number of outputs.
-        num_feat (int): Channel number of intermediate features.
-            Default: 64
-        num_block (int): Block number in the trunk network. Defaults: 23
-        num_grow_ch (int): Channels for each growth. Default: 32.
-    """
-
-    def __init__(self, num_in_ch, num_out_ch, scale=4, num_feat=64, num_block=23, num_grow_ch=32):
-        super(RRDBNet2, self).__init__()
-        self.scale = scale
-        if scale == 2:
-            num_in_ch = num_in_ch * 4
-        elif scale == 1:
-            num_in_ch = num_in_ch * 16
-        self.conv_first = nn.Conv2d(num_in_ch, num_feat, 3, 1, 1)
-        self.body = make_layer(RRDB, num_block, num_feat=num_feat, num_grow_ch=num_grow_ch)
-        self.conv_body = nn.Conv2d(num_feat, num_feat, 3, 1, 1)
-        self.upsample_mode = 'bilinear'
-
-        act_func = lambda: nn.LeakyReLU(negative_slope=0.2, inplace=True)
-
-        # upsample
-        self.conv_up1 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode=self.upsample_mode),
-            #nn.PixelShuffle(2),
             nn.Conv2d(num_feat, num_feat, 3, 1, 1),
             act_func(),
             nn.Conv2d(num_feat, num_feat, 3, 1, 1),
@@ -192,6 +111,8 @@ class RRDBNet2(nn.Module):
         self.torgb2 = nn.Conv2d(num_feat, num_out_ch, 3, 1, 1)
         self.torgb3 = nn.Conv2d(num_feat, num_out_ch, 3, 1, 1)
 
+        self.ret_all = ret_all
+
     def forward(self, x):
         if self.scale == 2:
             feat = F.pixel_unshuffle(x, downscale_factor=2)
@@ -205,13 +126,17 @@ class RRDBNet2(nn.Module):
         feat = feat + body_feat
         # upsample
         rgb1 = self.torgb1(feat)
-        rgb =  F.interpolate(rgb1, scale_factor=2, mode=self.upsample_mode)
+        rgb = F.interpolate(rgb1, scale_factor=2, mode=self.upsample_mode)
         feat = self.conv_up1(feat)
         rgb2 = rgb + self.torgb2(feat)
         rgb = F.interpolate(rgb2, scale_factor=2, mode=self.upsample_mode)
         feat = self.conv_up2(feat)
-        out = rgb + self.torgb3(feat)
-        return out, rgb1, rgb2
+        rgb3 = rgb + self.torgb3(feat)
+
+        if self.ret_all:
+            return [rgb1, rgb2, rgb3]
+        else:
+            return rgb3
        
        
 @PL_ARCH_REGISTRY.register()

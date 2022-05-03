@@ -12,7 +12,7 @@ import numpy as np
 class NLayerDiscriminator(nn.Module):
     """Defines a PatchGAN discriminator"""
 
-    def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d):
+    def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d, ret_all=False):
         """Construct a PatchGAN discriminator
         Parameters:
             input_nc (int)  -- the number of channels in input images
@@ -49,11 +49,23 @@ class NLayerDiscriminator(nn.Module):
         ]
 
         sequence += [nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]  # output 1 channel prediction map
-        self.model = nn.Sequential(*sequence)
+        self.model = nn.ModuleList(sequence)
+
+        self.ret_all = ret_all
 
     def forward(self, input):
         """Standard forward."""
-        return self.model(input)
+        outputs = []
+        output = None
+        for i, m in enumerate(self.model):
+            output = m(input)
+            input = output
+            if self.ret_all and i > 0 and isinstance(m, nn.Conv2d):
+                outputs.append(output)
+        if self.ret_all:
+            return outputs
+        else:
+            return output
 
 
 class DiscriminatorBlock(nn.Module):
