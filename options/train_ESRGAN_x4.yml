@@ -10,7 +10,7 @@ multi_scale: false
 datasets:
   train:
     name: DF2K+OST
-    type: PairedImageDataset
+    type: PairedImageDataset2
     dataroot_gt: data/DF2K/DF2K_HR_sub2
     dataroot_lq: data/DF2K/DF2K_LR_bicubic_sub
     persistent_workers: true
@@ -27,11 +27,13 @@ datasets:
     gt_size: 128
     use_hflip: true
     use_rot: true
+    add_text: true
+    font_metadata: fonts/metadata.txt
 
     # data loader
     use_shuffle: true
-    num_worker_per_gpu: 4
-    batch_size_per_gpu: 32
+    num_worker_per_gpu: 0
+    batch_size_per_gpu: 4
     dataset_enlarge_ratio: 100
     prefetch_mode: ~
 

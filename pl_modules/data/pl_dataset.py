@@ -32,7 +32,7 @@ class PLDataset(pl.LightningDataModule):
         loader = DataLoader(ds, batch_size=dataset_opt['batch_size_per_gpu'], shuffle=dataset_opt['use_shuffle'],
                             num_workers=dataset_opt['num_worker_per_gpu'], drop_last=True,
                             pin_memory=dataset_opt.get('pin_memory', False),
-                            persistent_workers=dataset_opt.get('persistent_workers', False))
+                            persistent_workers=(dataset_opt.get('persistent_workers', False)) and dataset_opt['num_worker_per_gpu'] > 0)
         if not self.opt.get('preprocess_cpu', False) and self.trainer.num_devices == 1:
             loader = AsynchronousLoader(loader)
         return loader
