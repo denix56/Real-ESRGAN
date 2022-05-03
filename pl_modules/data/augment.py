@@ -16,7 +16,6 @@ def augment_add(imgs, font_paths, text=True):
         imgs = [imgs]
 
     if text and random.random() < 0.1:
-        font_path = random.choice(font_paths)
         size = random.randint(8, 32)
         text = Upper_Lower_string(random.randint(5, 20))
         color = np.random.randint(0, 256, size=3)
@@ -28,12 +27,24 @@ def augment_add(imgs, font_paths, text=True):
         coords = np.array([random.randint(5, max_h - size - 5),
                            random.randint(5, max_w - size - 5)])
 
-        for i, img in enumerate(imgs):
-            h, w = img.shape[:2]
+        while True:
+            font_path = random.choice(font_paths)
+            fonts = []
+            scales = []
+            try:
+                for i, img in enumerate(imgs):
+                    h, w = img.shape[:2]
+                    scale = h / max_h
+                    size_c = int(size * scale)
+                    font = ImageFont.truetype(font_path, size_c)
+                    fonts.append(font)
+                    scales.append(scale)
+                break
+            except OSError:
+                pass
+
+        for i, (font, scale, img) in enumerate(zip(fonts, scales, imgs)):
             img = Image.fromarray((img*255).astype(np.uint8))
-            scale = h / max_h
-            size_c = int(size * scale)
-            font = ImageFont.truetype(font_path, size_c)
             coords_c = (coords * scale).astype(int)
             img_editable = ImageDraw.Draw(img)
             img_editable.fontmode = "PA"
