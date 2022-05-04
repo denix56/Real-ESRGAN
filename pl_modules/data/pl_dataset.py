@@ -16,13 +16,18 @@ class PLDataset(pl.LightningDataModule):
         self.batch_size_per_gpu = None
         self.num_worker_per_gpu = None
 
-    def setup(self, stage: Optional[str] = None):
         self.val_ds = []
         for phase, dataset_opt in self.opt['datasets'].items():
             if phase == 'train':
+                dataset_opt['mode'] = 'train'
                 self.train_ds = (build_dataset(dataset_opt), dataset_opt)
+                if hasattr(self.train_ds[0], 'setup'):
+                    self.train_ds[0].setup()
             elif phase.split('_')[0] == 'val':
+                dataset_opt['mode'] = 'val'
                 self.val_ds.append((build_dataset(dataset_opt), dataset_opt))
+                if hasattr(self.val_ds[-1][0], 'setup'):
+                    self.val_ds[-1][0].setup()
             else:
                 raise ValueError(f'Dataset phase {phase} is not recognized.')
 

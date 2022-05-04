@@ -9,6 +9,7 @@ from basicsr.utils.matlab_functions import rgb2ycbcr
 from basicsr.utils.registry import DATASET_REGISTRY
 
 from pl_modules.data.augment import augment_add
+from pl_modules.data.hdf5_dataset import HDF5Dataset
 
 from PIL import Image
 import numpy as np
@@ -48,42 +49,57 @@ class PairedImageDataset2(data.Dataset):
         self.io_backend_opt = opt['io_backend']
         self.mean = opt['mean'] if 'mean' in opt else None
         self.std = opt['std'] if 'std' in opt else None
+        self.hdf5_ds = None
 
-        self.gt_folder, self.lq_folder = opt['dataroot_gt'], opt['dataroot_lq']
-        if 'filename_tmpl' in opt:
-            self.filename_tmpl = opt['filename_tmpl']
+        if self.io_backend_opt['type'] == 'hdf5':
+            assert opt['mode'] in ['train', 'val']
+            self.hdf5_ds = HDF5Dataset(self.opt['hdf5_path'], mode=opt['mode'], mem=self.io_backend_opt.get('mem', False))
         else:
-            self.filename_tmpl = '{}'
+            self.gt_folder, self.lq_folder = opt['dataroot_gt'], opt['dataroot_lq']
+            if 'filename_tmpl' in opt:
+                self.filename_tmpl = opt['filename_tmpl']
+            else:
+                self.filename_tmpl = '{}'
 
-        if self.io_backend_opt['type'] == 'lmdb':
-            self.io_backend_opt['db_paths'] = [self.lq_folder, self.gt_folder]
-            self.io_backend_opt['client_keys'] = ['lq', 'gt']
-            self.paths = paired_paths_from_lmdb([self.lq_folder, self.gt_folder], ['lq', 'gt'])
-        elif 'meta_info_file' in self.opt and self.opt['meta_info_file'] is not None:
-            self.paths = paired_paths_from_meta_info_file([self.lq_folder, self.gt_folder], ['lq', 'gt'],
-                                                          self.opt['meta_info_file'], self.filename_tmpl)
-        else:
-            self.paths = paired_paths_from_folder([self.lq_folder, self.gt_folder], ['lq', 'gt'], self.filename_tmpl)
+            if self.io_backend_opt['type'] == 'lmdb':
+                self.io_backend_opt['db_paths'] = [self.lq_folder, self.gt_folder]
+                self.io_backend_opt['client_keys'] = ['lq', 'gt']
+                self.paths = paired_paths_from_lmdb([self.lq_folder, self.gt_folder], ['lq', 'gt'])
+            elif 'meta_info_file' in self.opt and self.opt['meta_info_file'] is not None:
+                self.paths = paired_paths_from_meta_info_file([self.lq_folder, self.gt_folder], ['lq', 'gt'],
+                                                              self.opt['meta_info_file'], self.filename_tmpl)
+            else:
+                self.paths = paired_paths_from_folder([self.lq_folder, self.gt_folder], ['lq', 'gt'], self.filename_tmpl)
 
-        if self.opt['add_text']:
+        if self.opt.get('add_text', False):
             font_metdata = self.opt['font_metadata']
             with open(font_metdata, 'r') as f:
                 self.font_paths = f.read().split('\n')
 
-    def __getitem__(self, index):
-        if self.file_client is None:
-            self.file_client = FileClient(self.io_backend_opt.pop('type'), **self.io_backend_opt)
+    def setup(self):
+        if self.hdf5_ds is not None:
+            self.hdf5_ds.setup()
 
+    def __getitem__(self, index):
         scale = self.opt['scale']
 
-        # Load gt and lq images. Dimension order: HWC; channel order: BGR;
-        # image range: [0, 1], float32.
-        gt_path = self.paths[index]['gt_path']
-        img_bytes = self.file_client.get(gt_path, 'gt')
-        img_gt = imfrombytes(img_bytes, float32=True)
-        lq_path = self.paths[index]['lq_path']
-        img_bytes = self.file_client.get(lq_path, 'lq')
-        img_lq = imfrombytes(img_bytes, float32=True)
+        if self.hdf5_ds is not None:
+            data = self.hdf5_ds[index]
+            img_gt = data['gt'] / 255.
+            img_lq = data['lq'] / 255.
+            lq_path = str(index)
+            gt_path = str(index)
+        else:
+            if self.file_client is None:
+                self.file_client = FileClient(self.io_backend_opt.pop('type'), **self.io_backend_opt)
+            # Load gt and lq images. Dimension order: HWC; channel order: BGR;
+            # image range: [0, 1], float32.
+            gt_path = self.paths[index]['gt_path']
+            img_bytes = self.file_client.get(gt_path, 'gt')
+            img_gt = imfrombytes(img_bytes, float32=True)
+            lq_path = self.paths[index]['lq_path']
+            img_bytes = self.file_client.get(lq_path, 'lq')
+            img_lq = imfrombytes(img_bytes, float32=True)
 
         # augmentation for training
         if self.opt['phase'] == 'train':
@@ -119,4 +135,4 @@ class PairedImageDataset2(data.Dataset):
         return {'lq': img_lq, 'gt': img_gt, 'lq_path': lq_path, 'gt_path': gt_path}
 
     def __len__(self):
-        return len(self.paths)
+        return len(self.hdf5_ds) if self.hdf5_ds else len(self.paths)
