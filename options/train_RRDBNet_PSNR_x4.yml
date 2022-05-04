@@ -30,7 +30,7 @@ datasets:
     # data loader
     use_shuffle: true
     num_worker_per_gpu: 4
-    batch_size_per_gpu: 32
+    batch_size_per_gpu: 16
     dataset_enlarge_ratio: 100
     prefetch_mode: ~
 
@@ -50,6 +50,7 @@ network_g:
   num_feat: 64
   num_block: 23
   num_grow_ch: 32
+  use_attn: true
 
 # path
 path:
@@ -90,11 +91,11 @@ val:
       type: calculate_psnr
       crop_border: 4
       test_y_channel: false
-    lpips: # metric name, can be arbitrary
-      type: calculate_lpips
-      crop_border: 4
-      test_y_channel: false
-      net_type: vgg
+#    lpips: # metric name, can be arbitrary
+#      type: calculate_lpips
+#      crop_border: 4
+#      test_y_channel: false
+#      net_type: vgg
 
 # logging settings
 logger:

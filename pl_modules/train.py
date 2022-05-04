@@ -68,7 +68,7 @@ def train_pipeline(root_path):
         cbs.append(ema)
 
     if opt['logger'].get('use_tb_logger'):
-        logger = TensorBoardLogger(opt['root_path'], name='tb_logs', log_graph=True)
+        logger = TensorBoardLogger(opt['root_path'], name='tb_logs', log_graph=False)
     else:
         logger = None
 
@@ -78,7 +78,7 @@ def train_pipeline(root_path):
                          max_steps=total_iters, benchmark=True, deterministic=deterministic,
                          precision=16 if opt['train'].get('mixed') else 32,
                          strategy=DDPStrategy(find_unused_parameters=True) if opt['num_gpu'] != 1 else None,
-                         fast_dev_run=False)
+                         fast_dev_run=args.debug)
     if deterministic:
         # We have bilinear interpolation somewhere
         torch.use_deterministic_algorithms(True, warn_only=True)

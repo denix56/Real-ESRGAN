@@ -45,17 +45,30 @@ class RRDB(nn.Module):
         num_grow_ch (int): Channels for each growth.
     """
 
-    def __init__(self, num_feat, num_grow_ch=32):
+    def __init__(self, num_feat, num_grow_ch=32, use_attn=False):
         super(RRDB, self).__init__()
         self.rdb1 = ResidualDenseBlock(num_feat, num_grow_ch)
         self.rdb2 = ResidualDenseBlock(num_feat, num_grow_ch)
         self.rdb3 = ResidualDenseBlock(num_feat, num_grow_ch)
 
+        if use_attn:
+            self.attn = nn.MultiheadAttention(num_feat*16, 8, batch_first=True)
+        else:
+            self.attn = None
+
     def forward(self, x):
         out = self.rdb1(x)
         out = self.rdb2(out)
         out = self.rdb3(out)
-        # Emperically, we use 0.2 to scale the residual for better performance
+
+        if self.attn:
+            out = F.pixel_unshuffle(out, 4)
+            shape = out.shape
+            out = out.view(*shape[:2], -1).permute(0, 2, 1)
+            out, _ = self.attn(out, out, out, need_weights=False)
+            out = out.permute(0, 2, 1).reshape(shape)
+            out = F.pixel_shuffle(out, 4)
+        # Empirically, we use 0.2 to scale the residual for better performance
         return out * 0.2 + x
 
 
@@ -77,7 +90,7 @@ class RRDBNet(nn.Module):
         num_grow_ch (int): Channels for each growth. Default: 32.
     """
 
-    def __init__(self, num_in_ch, num_out_ch, scale=4, num_feat=64, num_block=23, num_grow_ch=32, ret_all=False):
+    def __init__(self, num_in_ch, num_out_ch, scale=4, num_feat=64, num_block=23, num_grow_ch=32, ret_all=False, use_attn=False):
         super(RRDBNet, self).__init__()
         self.scale = scale
         if scale == 2:
@@ -85,7 +98,7 @@ class RRDBNet(nn.Module):
         elif scale == 1:
             num_in_ch = num_in_ch * 16
         self.conv_first = nn.Conv2d(num_in_ch, num_feat, 3, 1, 1)
-        self.body = make_layer(RRDB, num_block, num_feat=num_feat, num_grow_ch=num_grow_ch)
+        self.body = make_layer(RRDB, num_block, num_feat=num_feat, num_grow_ch=num_grow_ch, use_attn=use_attn)
         self.conv_body = nn.Conv2d(num_feat, num_feat, 3, 1, 1)
         self.upsample_mode = 'bilinear'
 
@@ -114,6 +127,20 @@ class RRDBNet(nn.Module):
         self.ret_all = ret_all
 
     def forward(self, x):
+        h, w = x.shape[-2:]
+        h_pad, w_pad = h, w
+        if h_pad % 4 != 0:
+            h_pad = (h // 4 + 1) * 4
+        if w_pad % 4 != 0:
+            w_pad = (w // 4 + 1) * 4
+
+        left = (w_pad - w) // 2
+        right = w_pad - w - left
+        top = (h_pad - h) // 2
+        bottom = h_pad - h - top
+
+        x = F.pad(x, (left, right, top, bottom))
+
         if self.scale == 2:
             feat = F.pixel_unshuffle(x, downscale_factor=2)
         elif self.scale == 1:
@@ -132,6 +159,13 @@ class RRDBNet(nn.Module):
         rgb = F.interpolate(rgb2, scale_factor=2, mode=self.upsample_mode)
         feat = self.conv_up2(feat)
         rgb3 = rgb + self.torgb3(feat)
+
+        top = top*self.scale
+        left = left * self.scale
+        bottom = -bottom*self.scale if bottom > 0 else None
+        right = -right*self.scale if right > 0 else None
+
+        rgb3 = rgb3[..., top:bottom, left:right]
 
         if self.ret_all:
             return [rgb1, rgb2, rgb3]
