@@ -47,10 +47,10 @@ def process(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--input_train_hr', type=str, help='Input HR dir')
-    parser.add_argument('--input_train_lr', type=str, help='Input LR dir')
-    parser.add_argument('--input_val_hr', type=str, help='Input HR dir')
-    parser.add_argument('--input_val_lr', type=str, help='Input LR dir')
+    parser.add_argument('--input_train_hr', type=str, help='Input HR train dir')
+    parser.add_argument('--input_train_lr', type=str, help='Input LR train dir')
+    parser.add_argument('--input_val_hr', type=str, help='Input HR val dir')
+    parser.add_argument('--input_val_lr', type=str, help='Input LR val dir')
     parser.add_argument('--output', type=str, help='Output file path')
     args = parser.parse_args()
 

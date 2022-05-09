@@ -14,6 +14,7 @@ from pl_modules.callbacks.ema import EMA
 from pl_modules.callbacks.model_summary import ModelSummary
 from pl_modules.models import build_model
 from pl_modules.data.pl_dataset import PLDataset
+from pl_modules.losses.losses import *
 
 
 def find_resume_ckpt(opt):
@@ -50,6 +51,7 @@ def train_pipeline(root_path):
     torch.hub.set_dir(hub_dir)
     
     resume_ckpt_path = find_resume_ckpt(opt)
+    print(resume_ckpt_path)
 
     pl.seed_everything(opt['manual_seed'], workers=True)
 
@@ -59,7 +61,7 @@ def train_pipeline(root_path):
     model = build_model(opt)
 
     ms = ModelSummary(-1)
-    mcp = ModelCheckpoint(opt['path']['models'], monitor='val/PSNR', mode='max', save_last=True)
+    mcp = ModelCheckpoint(opt['path']['models'], monitor='val/LPIPS', mode='min', save_last=True)
     cbs = [ms, mcp]
 
     ema_decay = opt['train'].get('ema_decay')

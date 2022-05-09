@@ -16,6 +16,8 @@ from overrides import overrides
 from pl_modules.metrics import build_metric
 from pl_modules.metrics.metric_util import GatherImages
 
+import kornia as K
+
 
 @PL_MODEL_REGISTRY.register()
 class SRModel(BaseModel):
@@ -117,6 +119,12 @@ class SRModel(BaseModel):
             if l_style is not None:
                 l_total += l_style
                 loss_dict['l_style'] = l_style
+        if False:
+            d_o = torch.norm(K.filters.spatial_gradient(output, mode='sobel'), dim=2)
+            d_gt = torch.norm(K.filters.spatial_gradient(gt, mode='sobel'), dim=2)
+            s_loss = F.l1_loss(d_o, d_gt)
+            l_total += s_loss
+            loss_dict['s_loss'] = s_loss
 
         loss_dict['l_total'] = l_total
         self.log_dict(loss_dict)

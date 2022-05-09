@@ -14,7 +14,7 @@ class ResidualDenseBlock(nn.Module):
         num_grow_ch (int): Channels for each growth.
     """
 
-    def __init__(self, num_feat=64, num_grow_ch=32):
+    def __init__(self, num_feat=64, num_grow_ch=32, alpha_p=False):
         super(ResidualDenseBlock, self).__init__()
         act_func = lambda: nn.LeakyReLU(negative_slope=0.2, inplace=True)
 
@@ -28,13 +28,15 @@ class ResidualDenseBlock(nn.Module):
         self.last_conv = nn.Conv2d(num_feat + num_interm_layers * num_grow_ch, num_feat, 3, 1, 1)
         # initialization
         default_init_weights([self.layers, self.last_conv], 0.1)
+        
+        self.alpha = nn.Parameter(torch.tensor([0.2]), requires_grad=alpha_p)
 
     def forward(self, x):
         inp = x
         for layer in self.layers:
             x = torch.cat((x, layer(x)), dim=1)
         x = self.last_conv(x)
-        return x * 0.2 + inp
+        return x * self.alpha + inp
 
 
 class RRDB(nn.Module):
@@ -45,16 +47,18 @@ class RRDB(nn.Module):
         num_grow_ch (int): Channels for each growth.
     """
 
-    def __init__(self, num_feat, num_grow_ch=32, use_attn=False):
+    def __init__(self, num_feat, num_grow_ch=32, use_attn=False, alpha_p=False):
         super(RRDB, self).__init__()
-        self.rdb1 = ResidualDenseBlock(num_feat, num_grow_ch)
-        self.rdb2 = ResidualDenseBlock(num_feat, num_grow_ch)
-        self.rdb3 = ResidualDenseBlock(num_feat, num_grow_ch)
+        self.rdb1 = ResidualDenseBlock(num_feat, num_grow_ch, alpha_p=alpha_p)
+        self.rdb2 = ResidualDenseBlock(num_feat, num_grow_ch, alpha_p=alpha_p)
+        self.rdb3 = ResidualDenseBlock(num_feat, num_grow_ch, alpha_p=alpha_p)
 
         if use_attn:
             self.attn = nn.MultiheadAttention(num_feat*16, 8, batch_first=True)
         else:
             self.attn = None
+            
+        self.alpha = nn.Parameter(torch.tensor([0.2]), requires_grad=alpha_p)
 
     def forward(self, x):
         out = self.rdb1(x)
@@ -69,7 +73,7 @@ class RRDB(nn.Module):
             out = out.permute(0, 2, 1).reshape(shape)
             out = F.pixel_shuffle(out, 4)
         # Empirically, we use 0.2 to scale the residual for better performance
-        return out * 0.2 + x
+        return out * self.alpha + x
 
 
 @PL_ARCH_REGISTRY.register()
@@ -90,41 +94,75 @@ class RRDBNet(nn.Module):
         num_grow_ch (int): Channels for each growth. Default: 32.
     """
 
-    def __init__(self, num_in_ch, num_out_ch, scale=4, num_feat=64, num_block=23, num_grow_ch=32, ret_all=False, use_attn=False):
+    def __init__(self, num_in_ch, num_out_ch, scale=4, num_feat=64, num_block=23, num_grow_ch=32, 
+    ret_all=False, use_attn=False, add_feat=False, add_x=False, alpha_p=False, shuffle=False):
         super(RRDBNet, self).__init__()
         self.scale = scale
+        self.upsample_mode = 'bilinear'
         if scale == 2:
             num_in_ch = num_in_ch * 4
         elif scale == 1:
             num_in_ch = num_in_ch * 16
-        self.conv_first = nn.Conv2d(num_in_ch, num_feat, 3, 1, 1)
-        self.body = make_layer(RRDB, num_block, num_feat=num_feat, num_grow_ch=num_grow_ch, use_attn=use_attn)
-        self.conv_body = nn.Conv2d(num_feat, num_feat, 3, 1, 1)
-        self.upsample_mode = 'bilinear'
-
+            
         act_func = lambda: nn.LeakyReLU(negative_slope=0.2, inplace=True)
+        self.conv_first = nn.Conv2d(num_in_ch, num_feat, 3, 1, 1)
+        self.body = make_layer(RRDB, num_block, num_feat=num_feat, num_grow_ch=num_grow_ch, use_attn=use_attn, alpha_p=alpha_p)
+        if shuffle:
+            assert not add_feat
+            self.conv_body = nn.Sequential(
+                                 nn.Conv2d(num_feat, num_feat*2, 3, 1, 1),
+                                 act_func(),
+                                 nn.Conv2d(num_feat*2, num_feat*2, 3, 1, 1),
+                                 act_func()
+                             )
+            self.conv_up1 = nn.Sequential(
+                nn.PixelShuffle(2),
+                nn.Conv2d(num_feat//2, num_feat//2, 3, 1, 1),
+                act_func(),
+                nn.Conv2d(num_feat//2, num_feat//2, 3, 1, 1),
+                act_func(),
+            )
+            self.conv_up2 = nn.Sequential(
+                nn.PixelShuffle(2),
+                nn.Conv2d(num_feat//8, num_feat//8, 3, 1, 1),
+                act_func(),
+                nn.Conv2d(num_feat//8, num_feat//8, 3, 1, 1),
+                act_func(),
+            )
+            
+            self.torgb1 = nn.Conv2d(num_feat*2, num_out_ch, 3, 1, 1)
+            self.torgb2 = nn.Conv2d(num_feat//2, num_out_ch, 3, 1, 1)
+            self.torgb3 = nn.Conv2d(num_feat//8, num_out_ch, 3, 1, 1)
 
-        # upsample
-        self.conv_up1 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode=self.upsample_mode),
-            nn.Conv2d(num_feat, num_feat, 3, 1, 1),
-            act_func(),
-            nn.Conv2d(num_feat, num_feat, 3, 1, 1),
-            act_func(),
-        )
-        self.conv_up2 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode=self.upsample_mode),
-            nn.Conv2d(num_feat, num_feat, 3, 1, 1),
-            act_func(),
-            nn.Conv2d(num_feat, num_feat, 3, 1, 1),
-            act_func(),
-        )
+            
+        else:
+            self.conv_body = nn.Sequential(
+                                 nn.Conv2d(num_feat, num_feat, 3, 1, 1),
+                             )
 
-        self.torgb1 = nn.Conv2d(num_feat, num_out_ch, 3, 1, 1)
-        self.torgb2 = nn.Conv2d(num_feat, num_out_ch, 3, 1, 1)
-        self.torgb3 = nn.Conv2d(num_feat, num_out_ch, 3, 1, 1)
+            # upsample
+            self.conv_up1 = nn.Sequential(
+                nn.Upsample(scale_factor=2, mode=self.upsample_mode),
+                nn.Conv2d(num_feat, num_feat, 3, 1, 1),
+                act_func(),
+                nn.Conv2d(num_feat, num_feat, 3, 1, 1),
+                act_func(),
+            )
+            self.conv_up2 = nn.Sequential(
+                nn.Upsample(scale_factor=2, mode=self.upsample_mode),
+                nn.Conv2d(num_feat, num_feat, 3, 1, 1),
+                act_func(),
+                nn.Conv2d(num_feat, num_feat, 3, 1, 1),
+                act_func(),
+            )
+
+            self.torgb1 = nn.Conv2d(num_feat, num_out_ch, 3, 1, 1)
+            self.torgb2 = nn.Conv2d(num_feat, num_out_ch, 3, 1, 1)
+            self.torgb3 = nn.Conv2d(num_feat, num_out_ch, 3, 1, 1)
 
         self.ret_all = ret_all
+        self.add_feat = add_feat
+        self.add_x = add_x
 
     def forward(self, x):
         h, w = x.shape[-2:]
@@ -150,9 +188,15 @@ class RRDBNet(nn.Module):
         feat = self.conv_first(feat)
         body_out = self.body(feat)
         body_feat = self.conv_body(body_out)
-        feat = feat + body_feat
+        if self.add_feat:
+            feat = feat + body_feat
+        else:
+            feat = body_feat
         # upsample
-        rgb1 = self.torgb1(feat)
+        if self.add_x:   
+            rgb1 = x + self.torgb1(feat)
+        else:
+            rgb1 = self.torgb1(feat)
         rgb = F.interpolate(rgb1, scale_factor=2, mode=self.upsample_mode)
         feat = self.conv_up1(feat)
         rgb2 = rgb + self.torgb2(feat)

@@ -1,5 +1,5 @@
 # general settings
-name: 052_ESRGAN_x4_f64b23_DIV2K_400k_B16G1_051pretrain_wandb_4
+name: 052_ESRGAN_x4_f64b23_DIV2K_400k_B16G1_051pretrain_wandb_org_tex_norm_eig_scaled
 model_type: ESRGANModel
 scale: 4
 num_gpu: auto  # set num_gpu: 0 for cpu mode
@@ -33,7 +33,7 @@ datasets:
     # data loader
     use_shuffle: true
     num_worker_per_gpu: 4
-    batch_size_per_gpu: 2
+    batch_size_per_gpu: 64
     dataset_enlarge_ratio: 100
     prefetch_mode: ~
 
@@ -47,24 +47,30 @@ datasets:
 
 # network structures
 network_g:
-  type: RRDBNet
+  type: RRDBNetOrg
   num_in_ch: 3
   num_out_ch: 3
   num_feat: 64
   num_block: 23
-  ret_all: false
+  #ret_all: false
+  #use_attn: false
+  #add_feat: false
+  #add_x: true
+  #alpha_p: true
 
 network_d:
-  type: NLayerDiscriminator
-  input_nc: 3
-  ret_all: false
+  type: UNetDiscriminatorSN
+  num_in_ch: 3
+  num_feat: 64
+  skip_connection: True
+  #ret_all: false
   
   #num_in_ch: 3
   #num_feat: 64
 
 # path
 path:
-  pretrain_network_g: experiments/051_RRDBNet_PSNR_x4_f64b23_DIV2K_1000k_B16G1_wandb_3_fast/models/last.ckpt
+  pretrain_network_g: /scratch/dsenkin/Thesis/Real-ESRGAN/experiments/051_RRDBNet_PSNR_x4_f64b23_DIV2K_1000k_B16G1_wandb/models/last2.ckpt
   strict_load_g: true
   resume_state: ~
 
@@ -89,7 +95,7 @@ train:
   total_iter: 400000
   warmup_iter: -1  # no warm up
   mixed: true
-  cat_imgs: true
+  cat_imgs: false
 
   use_l1_gan_loss: false
 
@@ -99,15 +105,18 @@ train:
     loss_weight: !!float 1e-2
     reduction: mean
   perceptual_opt:
-    type: PerceptualLoss
+    type: PerceptualLoss2
     layer_weights:
       'conv5_4': 1  # before relu
     vgg_type: vgg19
     use_input_norm: true
     range_norm: false
     perceptual_weight: 1.0
-    style_weight: 0
+    style_weight: 0.01
     criterion: l1
+    style_criterion: l2
+    norm_gram: true
+    eig: true
   gan_opt:
     type: GANLoss
     gan_type: vanilla

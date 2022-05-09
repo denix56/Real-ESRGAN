@@ -9,6 +9,8 @@ from pl_modules.archs import build_network
 
 from overrides import overrides
 
+import kornia as K
+
 
 @PL_MODEL_REGISTRY.register()
 class ESRGANModel(SRGANModel):
@@ -67,6 +69,7 @@ class ESRGANModel(SRGANModel):
                 outputs = [outputs]
 
             l_g_pix = 0
+            l_g_sob = 0
             l_g_percep, l_g_style = 0, 0
             l_g_gan = 0
             loss_dict = {}
@@ -90,6 +93,11 @@ class ESRGANModel(SRGANModel):
                     if l_g_style_c is not None:
                         l_g_style += l_g_style_c
                         #loss_dict['l_g_style'] = l_g_style
+                if False:
+                    d_o = torch.norm(K.filters.spatial_gradient(output, mode='sobel'), dim=2)
+                    d_gt = torch.norm(K.filters.spatial_gradient(percep_gt_c, mode='sobel'), dim=2)
+                    s_loss = F.l1_loss(d_o, d_gt)
+                    l_g_sob += s_loss
                 # gan loss (relativistic gan)
 
                 if self.cat_imgs:
@@ -113,12 +121,13 @@ class ESRGANModel(SRGANModel):
                     if self.use_l1_gan_loss:
                         l_g_gan_l1 += F.l1_loss(fake_g_pred, real_d_pred)
 
-            l_g_total = l_g_pix + l_g_percep + l_g_style + l_g_gan + l_g_gan_l1
+            l_g_total = l_g_pix + l_g_percep + l_g_style + l_g_gan + l_g_gan_l1 + l_g_sob
             loss_dict['l_g_pix'] = l_g_pix
             loss_dict['l_g_percep'] = l_g_percep
             loss_dict['l_g_style'] = l_g_style
             loss_dict['l_g_gan'] = l_g_gan
             loss_dict['l_g_gan_l1'] = l_g_gan
+            loss_dict['s_loss'] = l_g_sob
             loss_dict['l_g_total'] = l_g_total
             self.log_dict(loss_dict)
 
