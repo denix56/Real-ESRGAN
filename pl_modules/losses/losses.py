@@ -129,14 +129,16 @@ class PerceptualLoss2(nn.Module):
         """
         n, c, h, w = x.size()
         features = x.view(n, c, w * h)
+        if norm:
+            features = F.normalize(features, dim=2)
         features_t = features.transpose(1, 2)
         gram = features.bmm(features_t)
         if norm:
-            norm1 = torch.norm(features, dim=-1, keepdim=True)
-            norm2 = norm1.transpose(1, 2)
-            eps = 1e-8
-            norm12 = norm1*norm2
-            gram = gram / torch.max(norm12, eps*torch.ones_like(norm12))
+            #norm1 = torch.norm(features, dim=-1, keepdim=True)
+            #norm2 = norm1.transpose(1, 2)
+            #eps = 1e-8
+            #norm12 = norm1*norm2
+            #gram = gram / torch.max(norm12, eps*torch.ones_like(norm12))
             
             if eig:
                 try:

@@ -1,5 +1,5 @@
 # general settings
-name: 051_RRDBNet_PSNR_x4_f64b23_DIV2K_1000k_B16G1_wandb_shuffle
+name: 051_RRDBNet_PSNR_x4_f64b23_DIV2K_1000k_B16G1_wandb_test
 model_type: SRModel
 scale: 4
 num_gpu: auto  # set num_gpu: 0 for cpu mode
@@ -14,7 +14,7 @@ datasets:
     dataroot_lq: data/DF2K/DF2K_LR_bicubic_sub
     persistent_workers: true
     pin_memory: true
-    #hdf5_path: C:\Users\denys\Thesis\Real-ESRGAN\data\df2k_ost_set14.h5
+    #hdf5_path: data/df2k_ost_set14.h5
 
     # (for lmdb)
     # dataroot_gt: datasets/DIV2K/DIV2K_train_HR_sub.lmdb
@@ -44,23 +44,23 @@ datasets:
    type: PairedImageDataset2
    dataroot_gt: data/Set14_SR/HR
    dataroot_lq: data/Set14_SR/LR
-   #hdf5_path: C:\Users\denys\Thesis\Real-ESRGAN\data\df2k_ost_set14.h5
+   #hdf5_path: data/df2k_ost_set14.h5
    io_backend:
      type: disk
      #mem: true
 
 # network structures
 network_g:
-  type: RRDBNet
+  type: RRDBNetOrg
   num_in_ch: 3
   num_out_ch: 3
   num_feat: 64
   num_block: 23
   num_grow_ch: 32
-  shuffle: true
+  #shuffle: true
   #use_attn: false
   #add_feat: true
-  add_x: true
+  #add_x: true
   #alpha_p: false
 
 # path
@@ -85,6 +85,7 @@ train:
 
   total_iter: 1000000
   warmup_iter: -1  # no warm up
+  mixed: true
 
   # losses
   pixel_opt:
