@@ -3,7 +3,12 @@ from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 from pl_bolts.datamodules import AsynchronousLoader
 from basicsr.data import build_dataset
+import torch
+import torch.nn.functional as F
 import pl_modules.data
+from pl_modules.data.augment import RgbToHsi, HsiToRgb, RgbToOklab, OklabToRgb
+
+import kornia as K
 
 
 class PLDataset(pl.LightningDataModule):
@@ -31,6 +36,8 @@ class PLDataset(pl.LightningDataModule):
             else:
                 raise ValueError(f'Dataset phase {phase} is not recognized.')
 
+        self._create_transform()
+
     def train_dataloader(self):
         ds = self.train_ds[0]
         dataset_opt = self.train_ds[1]
@@ -52,3 +59,87 @@ class PLDataset(pl.LightningDataModule):
         if len(loaders) == 1:
             loaders = loaders[0]
         return loaders
+
+    def _create_transform(self):
+        pipeline = []
+        pipeline_inv = []
+
+        if 'color' in self.opt:
+            if self.opt['color'] == 'rgb':
+                pass
+            elif self.opt['color'] == 'y':
+                pipeline.append(K.color.RgbToYcbcr())
+                pipeline_inv.append(K.color.YcbcrToRgb())
+                pipeline.append(K.contrib.Lambda(lambda x: x[:, :1]))
+            elif self.opt['color'] == 'ycbcr':
+                pipeline.append(K.color.RgbToYcbcr())
+                pipeline_inv.append(K.color.YcbcrToRgb())
+            elif self.opt['color'] == 'hsv':
+                pipeline.append(K.color.RgbToHsv())
+                pipeline_inv.append(K.color.HsvToRgb())
+            elif self.opt['color'] == 'hls':
+                pipeline.append(K.color.RgbToHls())
+                pipeline_inv.append(K.color.HlsToRgb())
+            elif self.opt['color'] == 'lab':
+                pipeline.append(K.color.RgbToLab())
+                pipeline_inv.append(K.color.LabToRgb())
+            elif self.opt['color'] == 'luv':
+                pipeline.append(K.color.RgbToLuv())
+                pipeline_inv.append(K.color.LuvToRgb())
+            elif self.opt['color'] == 'yuv':
+                pipeline.append(K.color.RgbToYuv())
+                pipeline_inv.append(K.color.YuvToRgb())
+            elif self.opt['color'] == 'xyz':
+                pipeline.append(K.color.RgbToXyz())
+                pipeline_inv.append(K.color.XyzToRgb())
+            elif self.opt['color'] == 'oklab':
+                pipeline.append(RgbToOklab())
+                pipeline_inv.append(OklabToRgb())
+            elif self.opt['color'] == 'hsi':
+                pipeline.append(RgbToHsi())
+                pipeline_inv.append(HsiToRgb())
+            else:
+                raise NotImplementedError()
+
+        mean = self.opt['mean'] if 'mean' in self.opt else None
+        std = self.opt['std'] if 'std' in self.opt else None
+        if mean is not None and std is not None:
+            pipeline.append(K.enhance.Normalize(mean, std))
+            pipeline_inv.append(K.enhance.Denormalize(mean, std))
+
+        if pipeline:
+            self.pipeline = K.augmentation.container.AugmentationSequential(*pipeline)
+            self.pipeline_inv = K.augmentation.container.AugmentationSequential(*pipeline_inv[::-1])
+        else:
+            self.pipeline = None
+            self.pipeline_inv = None
+
+    def apply_transform(self, batch):
+        if self.pipeline is not None:
+            batch['lq_org'] = batch['lq']
+            batch['lq'] = self.pipeline(batch['lq'])
+
+            if 'gt' in batch:
+                batch['gt_org'] = batch['gt']
+                batch['gt'] = self.pipeline(batch['gt'])
+        else:
+            batch['lq_org'] = batch['lq']
+            if 'gt' in batch:
+                batch['gt_org'] = batch['gt']
+        return batch
+
+    def apply_inv_transform(self, batch):
+        assert 'out' in batch
+
+        if self.pipeline_inv is not None:
+            if self.opt['color'] == 'y':
+                lq = F.interpolate(batch['lq_org'], size=batch['out'].shape[-2:], mode='bicubic')
+                lq = K.color.rgb_to_ycbcr(lq)
+                batch['out'] = torch.cat((batch['out'], lq[:, 1:]), dim=1)
+            batch['out'] = self.pipeline_inv(batch['out'])
+            batch['lq'] = batch['lq_org']
+            if 'gt' in batch:
+                batch['gt'] = batch['gt_org']
+        return batch
+
+

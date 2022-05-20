@@ -1,3 +1,4 @@
+import itertools
 import os
 import os.path as osp
 from copy import deepcopy
@@ -16,7 +17,66 @@ from overrides import overrides
 from pl_modules.metrics import build_metric
 from pl_modules.metrics.metric_util import GatherImages
 
-import kornia as K
+import torch.nn as nn
+
+
+def inverse_leaky_relu(x, negative_slope=1e-2, inplace=False):
+    return F.leaky_relu(x, 1./negative_slope, inplace=inplace)
+
+
+class InverseLeakyReLU(nn.Module):
+    def __init__(self, negative_slope: float = 1e-2, inplace=False):
+        super().__init__()
+        self.negative_slope = negative_slope
+        self.inlace = inplace
+
+    def forward(self, x):
+        return inverse_leaky_relu(x, self.negative_slope, inplace=self.inplace)
+
+
+class ATanh(nn.Module):
+    def __init__(self, eps=1e-8):
+        super(ATanh, self).__init__()
+        self.eps = eps
+
+    def forward(self, x):
+        x = x.clamp(-1+self.eps, 1-self.eps)
+        return torch.atanh(x)
+
+
+class ColorTransform(nn.Module):
+    def __init__(self, negative_slope:float = 0.1, eps=1e-6):
+        super(ColorTransform, self).__init__()
+        self.net = nn.ModuleList(
+            [
+                nn.Linear(3, 3, bias=False),
+                nn.Linear(3, 3, bias=False),
+                nn.Linear(3, 3, bias=False)
+            ])
+        self.negative_slope = negative_slope
+        self.eps = eps
+
+    def forward(self, x, inv:bool = False):
+        x = x.permute(0, 2, 3, 1)
+        if not inv:
+            for i, m in enumerate(self.net):
+                x = m(x)
+                if i == len(self.net) - 1:
+                    x = torch.tanh(x)
+                else:
+                    x = F.leaky_relu(x, self.negative_slope)
+        else:
+            x = x.clamp(-1 + self.eps, 1 - self.eps)
+            x = torch.atanh(x)
+            x = x.to(torch.float32)
+            for i, m in enumerate(self.net[::-1]):
+                if m.bias is not None:
+                    x = x - m.bias.data
+                x = torch.linalg.solve(m.weight.data.expand(*x.shape[:-1], -1, -1), x)
+                if i < len(self.net) - 1:
+                    x = F.leaky_relu(x, 1./self.negative_slope)
+        x = x.permute(0, 3, 1, 2)
+        return x
 
 
 @PL_MODEL_REGISTRY.register()
@@ -52,10 +112,12 @@ class SRModel(BaseModel):
         if train_ds_opt:
             gt_size = train_ds_opt['gt_size']
             batch_size = train_ds_opt['batch_size_per_gpu']
-            in_channels = opt['network_g']['num_in_ch']
+            #in_channels = opt['network_g']['num_in_ch']
             scale = opt['scale']
-            self.example_input_array = {'lq': torch.zeros(batch_size, in_channels, gt_size//scale, gt_size//scale)
+            self.example_input_array = {'lq': torch.zeros(batch_size, 3, gt_size//scale, gt_size//scale)
                                         }
+
+        self.color_transform = lambda x, inv=False: x#ColorTransform()
 
     def setup(self, stage=None):
         super().setup(stage)
@@ -95,7 +157,7 @@ class SRModel(BaseModel):
 
     def forward(self, batch):
         lq = batch['lq']
-        output = self.net_g(lq)
+        output = self.color_transform(self.net_g(self.color_transform(lq)), inv=True)
         return output
 
     def training_step(self, batch, batch_idx):
@@ -119,28 +181,40 @@ class SRModel(BaseModel):
             if l_style is not None:
                 l_total += l_style
                 loss_dict['l_style'] = l_style
-        if False:
-            d_o = torch.norm(K.filters.spatial_gradient(output, mode='sobel'), dim=2)
-            d_gt = torch.norm(K.filters.spatial_gradient(gt, mode='sobel'), dim=2)
-            s_loss = F.l1_loss(d_o, d_gt)
-            l_total += s_loss
-            loss_dict['s_loss'] = s_loss
 
         loss_dict['l_total'] = l_total
         self.log_dict(loss_dict)
 
         if self.global_step % 250 == 0:
-            self._save_images(lq, output, gt, prefix='train')
+            with torch.no_grad():
+                output = self.color_transform(output, inv=True)
+                if self.trainer.datamodule is not None and hasattr(self.trainer.datamodule, 'apply_inv_transform'):
+                    batch['out'] = output
+                    batch = self.trainer.datamodule.apply_inv_transform(batch)
+                    lq = batch['lq']
+                    output = batch['out']
+                    gt = batch['gt']
+                self._save_images(lq, output, gt, prefix='train')
 
         return l_total
 
     def validation_step(self, batch, batch_idx):
         lq = batch['lq']
         gt = batch['gt']
+        lq_tmp = self.color_transform(lq)
+        output = self.net_g(lq_tmp)
+        output = self.color_transform(output, inv=True)
 
-        output = self.net_g(lq)
         if isinstance(output, list):
             output = output[-1]
+
+        if self.trainer.datamodule is not None and hasattr(self.trainer.datamodule, 'apply_inv_transform'):
+            batch['out'] = output
+            batch = self.trainer.datamodule.apply_inv_transform(batch)
+            lq = batch['lq']
+            output = batch['out']
+            gt = batch['gt']
+
         self.val_metrics(output, gt)
         self.gather_images(lq, output, gt)
 

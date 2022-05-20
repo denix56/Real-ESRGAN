@@ -47,6 +47,9 @@ class BaseModel(ABC, pl.LightningModule):
         return batch
 
     def on_after_batch_transfer(self, batch, dataloader_idx):
+        if self.trainer.datamodule is not None and hasattr(self.trainer.datamodule, 'apply_transform'):
+            batch = self.trainer.datamodule.apply_transform(batch)
+
         if not self.preprocess_cpu:
             batch = self._feed_data(batch)
         return batch

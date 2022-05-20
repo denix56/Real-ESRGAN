@@ -115,22 +115,24 @@ class PairedImageDataset2(data.Dataset):
             # flip, rotation
             img_gt, img_lq = augment([img_gt, img_lq], self.opt['use_hflip'], self.opt['use_rot'])
 
-        # color space transform
-        if 'color' in self.opt and self.opt['color'] == 'y':
-            img_gt = rgb2ycbcr(img_gt, y_only=True)[..., None]
-            img_lq = rgb2ycbcr(img_lq, y_only=True)[..., None]
 
         # crop the unmatched GT images during validation or testing, especially for SR benchmark datasets
         # TODO: It is better to update the datasets, rather than force to crop
         if self.opt['phase'] != 'train':
             img_gt = img_gt[0:img_lq.shape[0] * scale, 0:img_lq.shape[1] * scale, :]
 
-        # BGR to RGB, HWC to CHW, numpy to tensor
+        # # color space transform
+        # if 'color' in self.opt:
+        #     if self.opt['color'] == 'y':
+        #         img_gt = rgb2ycbcr(img_gt, y_only=True)[..., None]
+        #         img_lq = rgb2ycbcr(img_lq, y_only=True)[..., None]
+        #
+        # # BGR to RGB, HWC to CHW, numpy to tensor
         img_gt, img_lq = img2tensor([img_gt, img_lq], bgr2rgb=True, float32=True)
-        # normalize
-        if self.mean is not None or self.std is not None:
-            normalize(img_lq, self.mean, self.std, inplace=True)
-            normalize(img_gt, self.mean, self.std, inplace=True)
+        # # normalize
+        # if self.mean is not None or self.std is not None:
+        #     normalize(img_lq, self.mean, self.std, inplace=True)
+        #     normalize(img_gt, self.mean, self.std, inplace=True)
 
         return {'lq': img_lq, 'gt': img_gt, 'lq_path': lq_path, 'gt_path': gt_path}
 
