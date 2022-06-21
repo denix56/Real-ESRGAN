@@ -5,6 +5,7 @@ import importlib
 from basicsr.utils import scandir
 from os import path as osp
 
+
 # automatically scan and import model modules for registry
 # scan all the files under the 'models' folder and collect files ending with
 # '_model.py'
