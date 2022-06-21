@@ -86,7 +86,15 @@ class ESRGANModel(SRGANModel):
                     #loss_dict['l_g_pix'] = l_g_pix
                 # perceptual loss
                 if self.cri_perceptual:
-                    l_g_percep_c, l_g_style_c = self.cri_perceptual(output, percep_gt_c)
+                    if self.trainer.datamodule is not None and hasattr(self.trainer.datamodule, 'apply_inv_transform'):
+                        batch['out'] = output
+                        batch['gt'] = percep_gt_c
+                        batch = self.trainer.datamodule.apply_inv_transform(batch)
+                        l_g_percep_c, l_g_style_c = self.cri_perceptual(batch['out'], batch['gt'])
+                        batch['gt'] = gt
+                        batch['lq'] = lq
+                    else:
+                        l_g_percep_c, l_g_style_c = self.cri_perceptual(output, percep_gt_c)
                     if l_g_percep_c is not None:
                         l_g_percep += l_g_percep_c
                         #loss_dict['l_g_percep'] = l_g_percep
@@ -185,6 +193,12 @@ class ESRGANModel(SRGANModel):
             self.log_dict(loss_dict)
 
             if batch_idx % 250 == 0:
+                if self.trainer.datamodule is not None and hasattr(self.trainer.datamodule, 'apply_inv_transform'):
+                    batch['out'] = output_org
+                    batch = self.trainer.datamodule.apply_inv_transform(batch)
+                    lq = batch['lq']
+                    output_org = batch['out']
+                    gt = batch['gt']
                 self._save_images(lq, output_org, gt, prefix='train')
 
             return l_d_total

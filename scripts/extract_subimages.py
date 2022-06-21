@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 import os
 import sys
+import glob
 from basicsr.utils import scandir
 from multiprocessing import Pool
 from os import path as osp
@@ -59,7 +60,9 @@ def extract_subimages(opt):
         sys.exit(1)
 
     # scan all images
-    img_list = list(scandir(input_folder, full_path=True))
+    img_list = list(glob.glob(input_folder + '**/*', recursive=True))
+    img_list = [f for f in img_list if os.path.isfile(f)]
+    print(img_list)
 
     pbar = tqdm(total=len(img_list), unit='image', desc='Extract')
     pool = Pool(opt['n_thread'])

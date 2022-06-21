@@ -202,7 +202,26 @@ class SRModel(BaseModel):
         lq = batch['lq']
         gt = batch['gt']
         lq_tmp = self.color_transform(lq)
+        
+        #ret_all = True
         output = self.net_g(lq_tmp)
+        
+        # ~ if ret_all:
+            # ~ prefix='val'
+            # ~ path = osp.join(self.opt['path']['visualization'], prefix, 'all')
+            # ~ os.makedirs(path, exist_ok=True)
+            # ~ i = batch_idx+self.global_rank*100
+            # ~ for (i1, i2, i3) in zip(*output):
+                # ~ i1 = i1.unsqueeze(0)
+                # ~ i2 = i2.unsqueeze(0)
+                # ~ i3 = i3.unsqueeze(0)
+                # ~ i1 = F.interpolate(i1, size=i3.shape[-2:], mode='bicubic')
+                # ~ i2 = F.interpolate(i2, size=i3.shape[-2:], mode='bicubic')
+                # ~ joined = torch.cat((i1, i2, i3), dim=-1)
+                # ~ joined = self.color_transform(joined, inv=True).clamp(0, 1)
+                # ~ save_image(joined, osp.join(self.opt['path']['visualization'], prefix, 'all', 'image_{}.png'.format(i)))
+            # ~ output = output[-1]
+        
         output = self.color_transform(output, inv=True)
 
         if isinstance(output, list):
@@ -215,8 +234,10 @@ class SRModel(BaseModel):
             output = batch['out']
             gt = batch['gt']
 
-        self.val_metrics(output, gt)
+        self.val_metrics(output.to(torch.float32), gt.to(torch.float32))
         self.gather_images(lq, output, gt)
+        
+        
 
     def validation_epoch_end(self, outputs):
         metrics = self.val_metrics.compute()
@@ -234,7 +255,7 @@ class SRModel(BaseModel):
         if self.val_metrics_step is not None:
             metrics = {}
             for i, (pred, gt) in enumerate(zip(preds, gts)):
-                metrics_i = self.val_metrics_step(pred.unsqueeze(0), gt.unsqueeze(0))
+                metrics_i = self.val_metrics_step(pred.unsqueeze(0).to(torch.float32), gt.unsqueeze(0).to(torch.float32))
                 for k, v in metrics_i.items():
                     if k not in metrics:
                         metrics[k] = []
