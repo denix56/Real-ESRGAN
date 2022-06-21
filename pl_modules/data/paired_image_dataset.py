@@ -75,6 +75,8 @@ class PairedImageDataset2(data.Dataset):
             font_metdata = self.opt['font_metadata']
             with open(font_metdata, 'r') as f:
                 self.font_paths = f.read().split('\n')
+        else:
+            self.font_paths = None
 
     def setup(self):
         if self.hdf5_ds is not None:
@@ -107,7 +109,7 @@ class PairedImageDataset2(data.Dataset):
             # random crop
             img_gt, img_lq = paired_random_crop(img_gt, img_lq, gt_size, scale, gt_path)
             # text
-            img_gt = augment_add(img_gt, self.font_paths, text=self.opt['add_text'])
+            img_gt = augment_add(img_gt, self.font_paths, text=self.opt.get('add_text', False))
             img = Image.fromarray((img_gt * 255).astype(np.uint8))
             img_lq = img.resize(img_lq.shape[:2], resample=PIL.Image.BICUBIC)
             img_lq = np.array(img_lq) / 255.

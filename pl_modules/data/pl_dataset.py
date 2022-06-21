@@ -7,6 +7,7 @@ import torch
 import torch.nn.functional as F
 import pl_modules.data
 from pl_modules.data.augment import RgbToHsi, HsiToRgb, RgbToOklab, OklabToRgb
+from copy import deepcopy
 
 import kornia as K
 
@@ -52,7 +53,7 @@ class PLDataset(pl.LightningDataModule):
     def val_dataloader(self):
         loaders = []
         for ds, dataset_opt in self.val_ds:
-            loader = DataLoader(ds, batch_size=1, shuffle=False,
+            loader = DataLoader(ds, batch_size=1, shuffle=dataset_opt.get('use_shuffle_test', False),
                                 num_workers=0, drop_last=False,
                                 pin_memory=dataset_opt.get('pin_memory', True))
             loaders.append(loader)
@@ -116,12 +117,15 @@ class PLDataset(pl.LightningDataModule):
 
     def apply_transform(self, batch):
         if self.pipeline is not None:
+            dtype = batch['lq'].dtype
             batch['lq_org'] = batch['lq']
-            batch['lq'] = self.pipeline(batch['lq'])
+            batch['lq'] = self.pipeline(batch['lq'].to(torch.float32)).to(dtype)
+            
 
             if 'gt' in batch:
+                dtype = batch['gt'].dtype
                 batch['gt_org'] = batch['gt']
-                batch['gt'] = self.pipeline(batch['gt'])
+                batch['gt'] = self.pipeline(batch['gt'].to(torch.float32)).to(dtype)
         else:
             batch['lq_org'] = batch['lq']
             if 'gt' in batch:
@@ -130,13 +134,14 @@ class PLDataset(pl.LightningDataModule):
 
     def apply_inv_transform(self, batch):
         assert 'out' in batch
-
+        
         if self.pipeline_inv is not None:
             if self.opt['color'] == 'y':
                 lq = F.interpolate(batch['lq_org'], size=batch['out'].shape[-2:], mode='bicubic')
                 lq = K.color.rgb_to_ycbcr(lq)
                 batch['out'] = torch.cat((batch['out'], lq[:, 1:]), dim=1)
-            batch['out'] = self.pipeline_inv(batch['out'])
+            dtype = batch['out'].dtype
+            batch['out'] = self.pipeline_inv(batch['out'].to(torch.float32)).to(dtype)
             batch['lq'] = batch['lq_org']
             if 'gt' in batch:
                 batch['gt'] = batch['gt_org']

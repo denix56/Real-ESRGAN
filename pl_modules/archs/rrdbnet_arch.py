@@ -164,20 +164,21 @@ class RRDBNet(nn.Module):
         self.add_feat = add_feat
         self.add_x = add_x
 
-    def forward(self, x):
-        h, w = x.shape[-2:]
-        h_pad, w_pad = h, w
-        if h_pad % 4 != 0:
-            h_pad = (h // 4 + 1) * 4
-        if w_pad % 4 != 0:
-            w_pad = (w // 4 + 1) * 4
+    def forward(self, x, ret_all=False, pad=False):
+        if pad:
+            h, w = x.shape[-2:]
+            h_pad, w_pad = h, w
+            if h_pad % 4 != 0:
+                h_pad = (h // 4 + 1) * 4
+            if w_pad % 4 != 0:
+                w_pad = (w // 4 + 1) * 4
 
-        left = (w_pad - w) // 2
-        right = w_pad - w - left
-        top = (h_pad - h) // 2
-        bottom = h_pad - h - top
+            left = (w_pad - w) // 2
+            right = w_pad - w - left
+            top = (h_pad - h) // 2
+            bottom = h_pad - h - top
 
-        x = F.pad(x, (left, right, top, bottom))
+            x = F.pad(x, (left, right, top, bottom))
 
         if self.scale == 2:
             feat = F.pixel_unshuffle(x, downscale_factor=2)
@@ -203,15 +204,16 @@ class RRDBNet(nn.Module):
         rgb = F.interpolate(rgb2, scale_factor=2, mode=self.upsample_mode)
         feat = self.conv_up2(feat)
         rgb3 = rgb + self.torgb3(feat)
+        
+        if pad:
+            top = top*self.scale
+            left = left * self.scale
+            bottom = -bottom*self.scale if bottom > 0 else None
+            right = -right*self.scale if right > 0 else None
 
-        top = top*self.scale
-        left = left * self.scale
-        bottom = -bottom*self.scale if bottom > 0 else None
-        right = -right*self.scale if right > 0 else None
+            rgb3 = rgb3[..., top:bottom, left:right]
 
-        rgb3 = rgb3[..., top:bottom, left:right]
-
-        if self.ret_all:
+        if self.ret_all or ret_all:
             return [rgb1, rgb2, rgb3]
         else:
             return rgb3

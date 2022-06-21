@@ -89,7 +89,14 @@ class SRGANModel(SRModel):
                 loss_dict['l_g_pix'] = l_g_pix
             # perceptual loss
             if self.cri_perceptual:
-                l_g_percep, l_g_style = self.cri_perceptual(output, percep_gt)
+                if self.trainer.datamodule is not None and hasattr(self.trainer.datamodule, 'apply_inv_transform'):
+                    batch['out'] = output
+                    batch['gt'] = percep_gt
+                    batch_ = self.trainer.datamodule.apply_inv_transform(batch)
+                    batch['gt'] = gt
+                    l_g_percep, l_g_style = self.cri_perceptual(batch_['out'], batch_['gt'])
+                else:
+                    l_g_percep, l_g_style = self.cri_perceptual(output, percep_gt)
                 if l_g_percep is not None:
                     l_g_total += l_g_percep
                     loss_dict['l_g_percep'] = l_g_percep
@@ -134,6 +141,12 @@ class SRGANModel(SRModel):
             self.log_dict(loss_dict)
 
             if batch_idx % 250 == 0:
+                if self.trainer.datamodule is not None and hasattr(self.trainer.datamodule, 'apply_inv_transform'):
+                    batch['out'] = output
+                    batch = self.trainer.datamodule.apply_inv_transform(batch)
+                    lq = batch['lq']
+                    output = batch['out']
+                    gt = batch['gt']
                 self._save_images(lq, output_org, gt, prefix='train')
 
             return l_d_total

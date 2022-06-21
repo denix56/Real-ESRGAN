@@ -1,18 +1,18 @@
 # general settings
-name: 051_RRDBNet_PSNR_x4_f64b23_DIV2K_1000k_B16G1_wandb_test
+name: 051_RRDBNet_PSNR_x4_f64b23_Manga109_1000k_B16G1_wandb_y
 model_type: SRModel
 scale: 4
 num_gpu: auto  # set num_gpu: 0 for cpu mode
 manual_seed: 0
-color: rgb
+color: y
 
 # dataset and data loader settings
 datasets:
   train:
-    name: DF2K+OST
+    name: Manga109
     type: PairedImageDataset2
-    dataroot_gt: data/DF2K/DF2K_HR_sub2
-    dataroot_lq: data/DF2K/DF2K_LR_bicubic_sub
+    dataroot_gt: data/Manga109/Manga109_sub
+    dataroot_lq: data/Manga109/Manga109_LR
     persistent_workers: true
     pin_memory: true
     #hdf5_path: data/df2k_ost_set14.h5
@@ -30,7 +30,7 @@ datasets:
     gt_size: 128
     use_hflip: true
     use_rot: true
-    add_text: true
+    add_text: false
     font_metadata: fonts/metadata.txt
 
     # data loader
@@ -41,10 +41,10 @@ datasets:
     prefetch_mode: ~
 
   val:
-   name: Set14
+   name: Manga109_test
    type: PairedImageDataset2
-   dataroot_gt: data/Set14_SR/HR
-   dataroot_lq: data/Set14_SR/LR
+   dataroot_gt: data/Manga109/Manga109_test_HR
+   dataroot_lq: data/Manga109/Manga109_test_LR
    #hdf5_path: data/df2k_ost_set14.h5
    io_backend:
      type: disk
@@ -53,8 +53,8 @@ datasets:
 # network structures
 network_g:
   type: RRDBNetOrg
-  num_in_ch: 3
-  num_out_ch: 3
+  num_in_ch: 1
+  num_out_ch: 1
   num_feat: 64
   num_block: 23
   num_grow_ch: 32
