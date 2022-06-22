@@ -179,7 +179,7 @@ class SwinTransformerBlock(nn.Module):
 
     def __init__(self, dim, input_resolution, num_heads, window_size=7, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
-                 act_layer=nn.GELU, norm_layer=nn.LayerNorm):
+                 act_layer=nn.GELU, norm_layer=nn.LayerNorm, simplex=False):
         super().__init__()
         self.dim = dim
         self.input_resolution = input_resolution
@@ -199,6 +199,11 @@ class SwinTransformerBlock(nn.Module):
             qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
 
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        self.simplex = simplex
+        if simplex:
+            self.gamma = nn.Linear(dim, dim)
+            self.beta = nn.Linear(dim, dim)
+
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
         self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
@@ -270,8 +275,13 @@ class SwinTransformerBlock(nn.Module):
         x = x.view(B, H * W, C)
 
         # FFN
-        x = shortcut + self.drop_path(x)
-        x = x + self.drop_path(self.mlp(self.norm2(x)))
+        if self.simplex:
+            x_drop = self.drop_path(x)
+            x_attn = self.gamma(x_drop) * self.norm2(shortcut) + self.beta(x_drop)
+            x = shortcut + x_drop + self.drop_path(self.mlp(x_attn))
+        else:
+            x = shortcut + self.drop_path(x)
+            x = x + self.drop_path(self.mlp(self.norm2(x)))
 
         return x
 
@@ -365,7 +375,7 @@ class BasicLayer(nn.Module):
 
     def __init__(self, dim, input_resolution, depth, num_heads, window_size,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
-                 drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False):
+                 drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False, simplex=False):
 
         super().__init__()
         self.dim = dim
@@ -382,7 +392,7 @@ class BasicLayer(nn.Module):
                                  qkv_bias=qkv_bias, qk_scale=qk_scale,
                                  drop=drop, attn_drop=attn_drop,
                                  drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
-                                 norm_layer=norm_layer)
+                                 norm_layer=norm_layer, simplex=simplex)
             for i in range(depth)])
 
         # patch merging layer
@@ -439,7 +449,7 @@ class RSTB(nn.Module):
     def __init__(self, dim, input_resolution, depth, num_heads, window_size,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False,
-                 img_size=224, patch_size=4, resi_connection='1conv'):
+                 img_size=224, patch_size=4, resi_connection='1conv', simplex=False):
         super(RSTB, self).__init__()
 
         self.dim = dim
@@ -456,7 +466,8 @@ class RSTB(nn.Module):
                                          drop_path=drop_path,
                                          norm_layer=norm_layer,
                                          downsample=downsample,
-                                         use_checkpoint=use_checkpoint)
+                                         use_checkpoint=use_checkpoint,
+                                         simplex=simplex)
 
         if resi_connection == '1conv':
             self.conv = nn.Conv2d(dim, dim, 3, 1, 1)
@@ -646,7 +657,7 @@ class SwinIR(nn.Module):
                  window_size=7, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
                  norm_layer=nn.LayerNorm, ape=False, patch_norm=True,
-                 use_checkpoint=False, upscale=2, img_range=1., upsampler='', resi_connection='1conv',
+                 use_checkpoint=False, upscale=2, img_range=1., upsampler='', resi_connection='1conv', simplex=False,
                  **kwargs):
         super(SwinIR, self).__init__()
         num_in_ch = in_chans
@@ -716,8 +727,8 @@ class SwinIR(nn.Module):
                          use_checkpoint=use_checkpoint,
                          img_size=img_size,
                          patch_size=patch_size,
-                         resi_connection=resi_connection
-
+                         resi_connection=resi_connection,
+                         simplex=simplex
                          )
             self.layers.append(layer)
         self.norm = norm_layer(self.num_features)

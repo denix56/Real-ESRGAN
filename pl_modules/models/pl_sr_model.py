@@ -236,8 +236,6 @@ class SRModel(BaseModel):
 
         self.val_metrics(output.to(torch.float32), gt.to(torch.float32))
         self.gather_images(lq, output, gt)
-        
-        
 
     def validation_epoch_end(self, outputs):
         metrics = self.val_metrics.compute()
