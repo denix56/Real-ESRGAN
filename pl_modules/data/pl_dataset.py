@@ -12,6 +12,27 @@ from copy import deepcopy
 import kornia as K
 
 
+class MultiTransform(torch.nn.Module):
+    def __init__(self, transforms):
+        super().__init__()
+
+        self.transforms = []
+        for t in transforms:
+            if isinstance(t, list):
+                t = K.augmentation.container.AugmentationSequential(*t)
+            self.transforms.append(t)
+        self.transforms = torch.nn.ModuleList(self.transforms)
+
+    def forward(self, *args, only_first=False, **kwargs):
+        outs = []
+        for i, t in enumerate(self.transforms):
+            outs.append(t(*args, **kwargs))
+            if i == 0 and only_first:
+                break
+        outs = torch.cat(outs, dim=-3)
+        return outs
+
+
 class PLDataset(pl.LightningDataModule):
     def __init__(self, opt):
         super().__init__()
@@ -66,50 +87,55 @@ class PLDataset(pl.LightningDataModule):
         pipeline_inv = []
 
         if 'color' in self.opt:
-            if self.opt['color'] == 'rgb':
-                pass
-            elif self.opt['color'] == 'y':
-                pipeline.append(K.color.RgbToYcbcr())
-                pipeline_inv.append(K.color.YcbcrToRgb())
-                pipeline.append(K.contrib.Lambda(lambda x: x[:, :1]))
-            elif self.opt['color'] == 'ycbcr':
-                pipeline.append(K.color.RgbToYcbcr())
-                pipeline_inv.append(K.color.YcbcrToRgb())
-            elif self.opt['color'] == 'hsv':
-                pipeline.append(K.color.RgbToHsv())
-                pipeline_inv.append(K.color.HsvToRgb())
-            elif self.opt['color'] == 'hls':
-                pipeline.append(K.color.RgbToHls())
-                pipeline_inv.append(K.color.HlsToRgb())
-            elif self.opt['color'] == 'lab':
-                pipeline.append(K.color.RgbToLab())
-                pipeline_inv.append(K.color.LabToRgb())
-            elif self.opt['color'] == 'luv':
-                pipeline.append(K.color.RgbToLuv())
-                pipeline_inv.append(K.color.LuvToRgb())
-            elif self.opt['color'] == 'yuv':
-                pipeline.append(K.color.RgbToYuv())
-                pipeline_inv.append(K.color.YuvToRgb())
-            elif self.opt['color'] == 'xyz':
-                pipeline.append(K.color.RgbToXyz())
-                pipeline_inv.append(K.color.XyzToRgb())
-            elif self.opt['color'] == 'oklab':
-                pipeline.append(RgbToOklab())
-                pipeline_inv.append(OklabToRgb())
-            elif self.opt['color'] == 'hsi':
-                pipeline.append(RgbToHsi())
-                pipeline_inv.append(HsiToRgb())
-            else:
-                raise NotImplementedError()
+            colors = self.opt['color'].split(',')
+            for color in colors:
+                if color == 'rgb':
+                    pipeline.append([torch.nn.Identity()])
+                    pipeline_inv.append([torch.nn.Identity()])
+                elif color == 'y':
+                    pipeline.append([K.color.RgbToYcbcr(),
+                                     K.contrib.Lambda(lambda x: x[:, :1])])
+                    pipeline_inv.append([K.color.YcbcrToRgb()])
+                elif color == 'ycbcr':
+                    pipeline.append([K.color.RgbToYcbcr()])
+                    pipeline_inv.append([K.color.YcbcrToRgb()])
+                elif color == 'hsv':
+                    pipeline.append([K.color.RgbToHsv()])
+                    pipeline_inv.append([K.color.HsvToRgb()])
+                elif color == 'hls':
+                    pipeline.append([K.color.RgbToHls()])
+                    pipeline_inv.append([K.color.HlsToRgb()])
+                elif color == 'lab':
+                    pipeline.append([K.color.RgbToLab()])
+                    pipeline_inv.append([K.color.LabToRgb()])
+                elif color == 'luv':
+                    pipeline.append([K.color.RgbToLuv()])
+                    pipeline_inv.append([K.color.LuvToRgb()])
+                elif color == 'yuv':
+                    pipeline.append([K.color.RgbToYuv()])
+                    pipeline_inv.append([K.color.YuvToRgb()])
+                elif color == 'xyz':
+                    pipeline.append([K.color.RgbToXyz()])
+                    pipeline_inv.append([K.color.XyzToRgb()])
+                elif color == 'oklab':
+                    pipeline.append([RgbToOklab()])
+                    pipeline_inv.append([OklabToRgb()])
+                elif color == 'hsi':
+                    pipeline.append([RgbToHsi()])
+                    pipeline_inv.append([HsiToRgb()])
+                else:
+                    raise NotImplementedError()
 
-        mean = self.opt['mean'] if 'mean' in self.opt else None
-        std = self.opt['std'] if 'std' in self.opt else None
-        if mean is not None and std is not None:
-            pipeline.append(K.enhance.Normalize(mean, std))
-            pipeline_inv.append(K.enhance.Denormalize(mean, std))
+                mean = self.opt.get(f'mean_{color}', None)
+                std = self.opt.get(f'std_{color}', None)
+                if mean is not None and std is not None:
+                    pipeline[-1].append(K.enhance.Normalize(mean, std))
+                    pipeline_inv[-1].append(K.enhance.Denormalize(mean, std))
 
         if pipeline:
-            self.pipeline = K.augmentation.container.AugmentationSequential(*pipeline)
+            self.pipeline = MultiTransform(pipeline)
+            pipeline_inv = pipeline_inv[0]
+            #self.pipeline = K.augmentation.container.AugmentationSequential(*pipeline)
             self.pipeline_inv = K.augmentation.container.AugmentationSequential(*pipeline_inv[::-1])
         else:
             self.pipeline = None
@@ -117,15 +143,12 @@ class PLDataset(pl.LightningDataModule):
 
     def apply_transform(self, batch):
         if self.pipeline is not None:
-            dtype = batch['lq'].dtype
             batch['lq_org'] = batch['lq']
-            batch['lq'] = self.pipeline(batch['lq'].to(torch.float32)).to(dtype)
-            
+            batch['lq'] = self.pipeline(batch['lq'].to(torch.float32)).to(batch['lq'].dtype)
 
             if 'gt' in batch:
-                dtype = batch['gt'].dtype
                 batch['gt_org'] = batch['gt']
-                batch['gt'] = self.pipeline(batch['gt'].to(torch.float32)).to(dtype)
+                batch['gt'] = self.pipeline(batch['gt'].to(torch.float32), only_first=True).to(batch['gt'].dtype)
         else:
             batch['lq_org'] = batch['lq']
             if 'gt' in batch:
@@ -136,12 +159,12 @@ class PLDataset(pl.LightningDataModule):
         assert 'out' in batch
         
         if self.pipeline_inv is not None:
-            if self.opt['color'] == 'y':
+            colors = self.opt['color'].split(',')
+            if colors[0] == 'y':
                 lq = F.interpolate(batch['lq_org'], size=batch['out'].shape[-2:], mode='bicubic')
                 lq = K.color.rgb_to_ycbcr(lq)
                 batch['out'] = torch.cat((batch['out'], lq[:, 1:]), dim=1)
-            dtype = batch['out'].dtype
-            batch['out'] = self.pipeline_inv(batch['out'].to(torch.float32)).to(dtype)
+            batch['out'] = self.pipeline_inv(batch['out'].to(torch.float32)).to(batch['out'].dtype)
             batch['lq'] = batch['lq_org']
             if 'gt' in batch:
                 batch['gt'] = batch['gt_org']
