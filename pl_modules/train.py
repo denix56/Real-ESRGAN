@@ -51,7 +51,6 @@ def train_pipeline(root_path):
     torch.hub.set_dir(hub_dir)
     
     resume_ckpt_path = find_resume_ckpt(opt)
-    print(resume_ckpt_path)
 
     pl.seed_everything(opt['manual_seed'], workers=True)
 
@@ -84,10 +83,15 @@ def train_pipeline(root_path):
     if deterministic:
         # We have bilinear interpolation somewhere
         torch.use_deterministic_algorithms(True, warn_only=True)
-
-    if resume_ckpt_path is None and trainer.is_global_zero:
-        make_exp_dirs(opt)
-        copy_opt_file(args.opt, opt['path']['experiments_root'])
-    print('Path: {}'.format(opt['path']['experiments_root']))
-
-    trainer.fit(model, datamodule=data, ckpt_path=resume_ckpt_path)
+    
+    if opt['mode'] == 'train':
+        if resume_ckpt_path is None and trainer.is_global_zero:
+            make_exp_dirs(opt)
+            copy_opt_file(args.opt, opt['path']['experiments_root'])
+        print('Path: {}'.format(opt['path']['experiments_root']))
+        
+        trainer.fit(model, datamodule=data, ckpt_path=resume_ckpt_path)
+    elif opt['mode'] == 'val':
+        trainer.validate(model, datamodule=data, ckpt_path=resume_ckpt_path)
+    else:
+        raise NotImplementedError()

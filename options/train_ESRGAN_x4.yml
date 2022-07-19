@@ -1,58 +1,68 @@
 # general settings
-name: 052_ESRGAN_x4_f64b23_Manga109_400k_B16G1_051pretrain_wandb_org_rgb
+name: 052_ESRGAN_SwinIR_x4_DF2K_rgb
 model_type: ESRGANModel
 scale: 4
 num_gpu: auto  # set num_gpu: 0 for cpu mode
 manual_seed: 0
 multi_scale: false
 color: rgb
+mode: train
 
 # dataset and data loader settings
 datasets:
   train:
-    name: Manga109
+    name: DF2K+OST
     type: PairedImageDataset2
-    dataroot_gt: data/Manga109/Manga109_sub
-    dataroot_lq: data/Manga109/Manga109_LR
+    dataroot_gt: /home/dsenkin/Desktop/scratch/Thesis/Real-ESRGAN/data/DF2K/DF2K_HR_sub2
+    dataroot_lq: /home/dsenkin/Desktop/scratch/Thesis/Real-ESRGAN/data/DF2K/DF2K_LR_bicubic_sub
     persistent_workers: true
     pin_memory: true
+    #hdf5_path: data/df2k_ost_set14.h5
+
     # (for lmdb)
     # dataroot_gt: datasets/DIV2K/DIV2K_train_HR_sub.lmdb
     # dataroot_lq: datasets/DIV2K/DIV2K_train_LR_bicubic_X4_sub.lmdb
     filename_tmpl: '{}'
     io_backend:
       type: disk
+      #mem: true
       # (for lmdb)
       # type: lmdb
 
     gt_size: 128
     use_hflip: true
     use_rot: true
-    add_text: false
+    add_text: true
     font_metadata: fonts/metadata.txt
 
     # data loader
     use_shuffle: true
     num_worker_per_gpu: 4
-    batch_size_per_gpu: 64
+    batch_size_per_gpu: 32
     dataset_enlarge_ratio: 100
     prefetch_mode: ~
 
   val:
-    name: Manga109
-    type: PairedImageDataset
-    dataroot_gt: data/Manga109/Manga109_test_HR
-    dataroot_lq: data/Manga109/Manga109_test_LR
-    io_backend:
-      type: disk
+   name: Set14
+   type: PairedImageDataset2
+   dataroot_gt: /home/dsenkin/Desktop/scratch/Thesis/Real-ESRGAN/data/Set14_SR/HR
+   dataroot_lq: /home/dsenkin/Desktop/scratch/Thesis/Real-ESRGAN/data/Set14_SR/LR
+   #hdf5_path: data/df2k_ost_set14.h5
+   io_backend:
+     type: disk
+     #mem: true
 
 # network structures
 network_g:
-  type: RRDBNetOrg
-  num_in_ch: 3
-  num_out_ch: 3
-  num_feat: 64
-  num_block: 23
+  type: SwinIR
+  img_size: 128
+  patch_size: 1
+  in_chans : 3
+  embed_dim: 96
+  upscale: 4
+  window_size: 8
+  upsampler: nearest+conv
+  simplex: false
   #ret_all: false
   #use_attn: false
   #add_feat: false
@@ -71,7 +81,7 @@ network_d:
 
 # path
 path:
-  pretrain_network_g: /home/dsenkin/Desktop/scratch/Thesis/Real-ESRGAN/experiments/051_RRDBNet_PSNR_x4_f64b23_Manga109_1000k_B16G1_wandb_rgb/models/last.ckpt
+  pretrain_network_g: /work/ML/dsenkin/Thesis/Real-ESRGAN/experiments/051_SwinIR_x4_DIV2K/models/last.ckpt
   strict_load_g: true
   resume_state: ~
 

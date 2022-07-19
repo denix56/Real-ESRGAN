@@ -47,34 +47,67 @@ class ATanh(nn.Module):
 class ColorTransform(nn.Module):
     def __init__(self, negative_slope:float = 0.1, eps=1e-6):
         super(ColorTransform, self).__init__()
-        self.net = nn.ModuleList(
-            [
-                nn.Linear(3, 3, bias=False),
-                nn.Linear(3, 3, bias=False),
-                nn.Linear(3, 3, bias=False)
-            ])
-        self.negative_slope = negative_slope
-        self.eps = eps
+        self.net = nn.Sequential(
+                nn.Linear(3, 32, bias=False),
+                nn.LeakyReLU(inplace=True),
+                nn.Linear(32, 32, bias=False),
+                nn.LeakyReLU(inplace=True),
+                nn.Linear(32, 3, bias=False)
+            )
+            
+        self.rev_net = nn.Sequential(
+                nn.Linear(3, 32, bias=False),
+                nn.LeakyReLU(inplace=True),
+                nn.Linear(32, 32, bias=False),
+                nn.LeakyReLU(inplace=True),
+                nn.Linear(32, 3, bias=False)
+            )
 
-    def forward(self, x, inv:bool = False):
+    def forward(self, x, inv:bool = False, freeze:bool=False):
         x = x.permute(0, 2, 3, 1)
-        if not inv:
-            for i, m in enumerate(self.net):
-                x = m(x)
-                if i == len(self.net) - 1:
-                    x = torch.tanh(x)
-                else:
-                    x = F.leaky_relu(x, self.negative_slope)
+        model = None
+        if inv:
+            model = self.rev_net
         else:
-            x = x.clamp(-1 + self.eps, 1 - self.eps)
-            x = torch.atanh(x)
-            x = x.to(torch.float32)
-            for i, m in enumerate(self.net[::-1]):
-                if m.bias is not None:
-                    x = x - m.bias.data
-                x = torch.linalg.solve(m.weight.data.expand(*x.shape[:-1], -1, -1), x)
-                if i < len(self.net) - 1:
-                    x = F.leaky_relu(x, 1./self.negative_slope)
+            model = self.net
+            
+        if freeze:
+            model = deepcopy(model)
+            for param in model.parameters():
+                param.requires_grad = False
+            
+        x = model(x)
+        x = x.permute(0, 3, 1, 2)
+        return x
+        
+        
+class ColorTransform2(nn.Module):
+    def __init__(self, negative_slope:float = 0.1, eps=1e-6):
+        super(ColorTransform, self).__init__()
+        self.net = nn.Sequential(
+                nn.Linear(4, 32, bias=False),
+                nn.LeakyReLU(inplace=True),
+                nn.Linear(32, 32, bias=False),
+                nn.LeakyReLU(inplace=True),
+                nn.Linear(32, 3, bias=False)
+            )
+
+    def forward(self, x, inv:bool = False, freeze:bool=False):
+        x = x.permute(0, 2, 3, 1)            
+        model = self.net
+        
+        if inv:
+            mask = torch.ones(*x.shape[:-1], 1, device=x.device, dtype=x.dtype)
+        else:
+            mask = torch.zeros(*x.shape[:-1], 1, device=x.device, dtype=x.dtype)
+        x = torch.cat((x, mask), dim=-1)
+            
+        if freeze:
+            model = deepcopy(model)
+            for param in model.parameters():
+                param.requires_grad = False
+            
+        x = model(x)
         x = x.permute(0, 3, 1, 2)
         return x
 
@@ -117,7 +150,7 @@ class SRModel(BaseModel):
             self.example_input_array = {'lq': torch.zeros(batch_size, 3, gt_size//scale, gt_size//scale)
                                         }
 
-        self.color_transform = lambda x, inv=False: x#ColorTransform()
+        self.color_transform = lambda x, inv=False, freeze=False: x#ColorTransform()
 
     def setup(self, stage=None):
         super().setup(stage)
@@ -149,10 +182,14 @@ class SRModel(BaseModel):
             if v.requires_grad:
                 optim_params.append(v)
             else:
-                self.print(f'Params {k} will not be optimized.')
-
+                print(f'Params {k} will not be optimized.')
+        
         optim_type = train_opt['optim_g'].pop('type')
-        optimizer_g = self._get_optimizer(optim_type, optim_params, **train_opt['optim_g'])
+        optimizer_g = self._get_optimizer(optim_type, 
+                                          #itertools.chain(
+                                          optim_params, 
+                                          #self.color_transform.parameters()), 
+                                          **train_opt['optim_g'])
         return [optimizer_g]
 
     def forward(self, batch):
@@ -163,15 +200,20 @@ class SRModel(BaseModel):
     def training_step(self, batch, batch_idx):
         lq = batch['lq']
         gt = batch.get('gt')
-
-        output = self.net_g(lq)
+        lq_tmp = self.color_transform(lq)
+        output = self.net_g(lq_tmp)
+        output = self.color_transform(output, inv=True, freeze=True)
+        
+        lq_output = self.color_transform(lq_tmp.detach(), inv=True)
         l_total = 0
         loss_dict = {}
         # pixel loss
         if self.cri_pix:
             l_pix = self.cri_pix(output, gt)
-            l_total += l_pix
+            l_pix_lq = self.cri_pix(lq_output, lq)
+            l_total += l_pix + l_pix_lq
             loss_dict['l_pix'] = l_pix
+            loss_dict['l_pix_lq'] = l_pix_lq
         # perceptual loss
         if self.cri_perceptual:
             l_percep, l_style = self.cri_perceptual(output, gt)
@@ -181,13 +223,13 @@ class SRModel(BaseModel):
             if l_style is not None:
                 l_total += l_style
                 loss_dict['l_style'] = l_style
-
+                
         loss_dict['l_total'] = l_total
         self.log_dict(loss_dict)
 
         if self.global_step % 250 == 0:
             with torch.no_grad():
-                output = self.color_transform(output, inv=True)
+                #output = self.color_transform(output, inv=True)
                 if self.trainer.datamodule is not None and hasattr(self.trainer.datamodule, 'apply_inv_transform'):
                     batch['out'] = output
                     batch = self.trainer.datamodule.apply_inv_transform(batch)
@@ -199,6 +241,7 @@ class SRModel(BaseModel):
         return l_total
 
     def validation_step(self, batch, batch_idx):
+        print(self.net_g.training)
         lq = batch['lq']
         gt = batch['gt']
         lq_tmp = self.color_transform(lq)
@@ -297,5 +340,5 @@ class SRModel(BaseModel):
                 if keys[0] == f'net_{postfix}':
                     weights['.'.join(keys[1:])] = v
             net.load_state_dict(weights, strict=strict)
-            self.print(f'net_{postfix} loaded.')
+            print(f'net_{postfix} loaded.')
 

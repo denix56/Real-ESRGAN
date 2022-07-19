@@ -1,10 +1,11 @@
 # general settings
-name: 051_SwinIR_x4_DIV2K_simplex
+name: 051_SwinIR_x4_DIV2K_rgb_shuffle_model
 model_type: SRModel
 scale: 4
 num_gpu: auto  # set num_gpu: 0 for cpu mode
 manual_seed: 0
 color: rgb
+mode: train
 
 # dataset and data loader settings
 datasets:
@@ -32,6 +33,7 @@ datasets:
     use_rot: true
     add_text: true
     font_metadata: fonts/metadata.txt
+    c_shuffle: false
 
     # data loader
     use_shuffle: true
@@ -54,13 +56,15 @@ datasets:
 network_g:
   type: SwinIR
   img_size: 128
-  patch_size: 2
-  in_chans : 3
+  patch_size: 1
+  in_chans: 3
+  out_chans: 3
   embed_dim: 96
   upscale: 4
   window_size: 8
   upsampler: nearest+conv
-  simplex: true
+  simplex: false
+  c_shuffle: true
   #shuffle: true
   #use_attn: false
   #add_feat: true
@@ -82,10 +86,11 @@ train:
     betas: [0.9, 0.99]
 
   scheduler:
-    type: CosineAnnealingRestartLR
-    periods: [250000, 250000, 250000, 250000]
-    restart_weights: [1, 1, 1, 1]
-    eta_min: !!float 1e-7
+    type: MultiStepLR
+    milestones: [500000, 800000, 900000, 950000]
+    gamma: 0.5
+    #restart_weights: [1, 1, 1, 1]
+    #eta_min: !!float 1e-7
 
   total_iter: 1000000
   warmup_iter: -1  # no warm up

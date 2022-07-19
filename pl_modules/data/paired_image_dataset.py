@@ -109,7 +109,7 @@ class PairedImageDataset2(data.Dataset):
             # random crop
             img_gt, img_lq = paired_random_crop(img_gt, img_lq, gt_size, scale, gt_path)
             # text
-            img_gt = augment_add(img_gt, self.font_paths, text=self.opt.get('add_text', False))
+            img_gt = augment_add(img_gt, self.font_paths, text=self.opt.get('add_text', False), c_shuffle=self.opt.get('c_shuffle', False))
             img = Image.fromarray((img_gt * 255).astype(np.uint8))
             img_lq = img.resize(img_lq.shape[:2], resample=PIL.Image.BICUBIC)
             img_lq = np.array(img_lq) / 255.

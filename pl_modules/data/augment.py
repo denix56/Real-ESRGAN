@@ -18,7 +18,7 @@ def Upper_Lower_string(length):  # define the function and pass the length as ar
     return result
 
 
-def augment_add(imgs, font_paths, text=True):
+def augment_add(imgs, font_paths, text=True, c_shuffle=False):
     if not isinstance(imgs, list):
         imgs = [imgs]
 
@@ -59,6 +59,12 @@ def augment_add(imgs, font_paths, text=True):
                 break
             except OSError:
                 pass
+                
+    if c_shuffle and random.random() < 0.25:
+        for i, img in enumerate(imgs):
+            c_list = np.arange(img.shape[2])
+            np.random.default_rng().shuffle(c_list)
+            imgs[i] = np.ascontiguousarray(img[..., c_list])
     if len(imgs) == 1:
         imgs = imgs[0]
     return imgs

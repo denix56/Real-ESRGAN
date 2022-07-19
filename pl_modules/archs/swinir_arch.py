@@ -7,6 +7,9 @@ from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 
 from pl_modules import PL_ARCH_REGISTRY
 
+import kornia as K
+import numpy as np
+
 
 class Mlp(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
@@ -179,7 +182,7 @@ class SwinTransformerBlock(nn.Module):
 
     def __init__(self, dim, input_resolution, num_heads, window_size=7, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
-                 act_layer=nn.GELU, norm_layer=nn.LayerNorm, simplex=False):
+                 act_layer=nn.GELU, norm_layer=nn.LayerNorm, simplex=False, c_shuffle=False):
         super().__init__()
         self.dim = dim
         self.input_resolution = input_resolution
@@ -187,6 +190,7 @@ class SwinTransformerBlock(nn.Module):
         self.window_size = window_size
         self.shift_size = shift_size
         self.mlp_ratio = mlp_ratio
+        self.c_shuffle = c_shuffle
         if min(self.input_resolution) <= self.window_size:
             # if window size is larger than input resolution, we don't partition windows
             self.shift_size = 0
@@ -203,6 +207,7 @@ class SwinTransformerBlock(nn.Module):
         if simplex:
             self.gamma = nn.Linear(dim, dim)
             self.beta = nn.Linear(dim, dim)
+            self.norm3 = norm_layer(dim)
 
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
@@ -242,6 +247,11 @@ class SwinTransformerBlock(nn.Module):
         H, W = x_size
         B, L, C = x.shape
         # assert L == H * W, "input feature has wrong size"
+        
+        if self.c_shuffle and self.training:
+            c_list = np.arange(C)
+            np.random.default_rng().shuffle(c_list)
+            x = x[..., c_list].contiguous()
 
         shortcut = x
         x = self.norm1(x)
@@ -278,7 +288,7 @@ class SwinTransformerBlock(nn.Module):
         if self.simplex:
             x_drop = self.drop_path(x)
             x_attn = self.gamma(x_drop) * self.norm2(shortcut) + self.beta(x_drop)
-            x = shortcut + x_drop + self.drop_path(self.mlp(x_attn))
+            x = x_attn + self.drop_path(self.mlp(self.norm3(x_attn)))
         else:
             x = shortcut + self.drop_path(x)
             x = x + self.drop_path(self.mlp(self.norm2(x)))
@@ -375,7 +385,7 @@ class BasicLayer(nn.Module):
 
     def __init__(self, dim, input_resolution, depth, num_heads, window_size,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
-                 drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False, simplex=False):
+                 drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False, simplex=False, c_shuffle=False):
 
         super().__init__()
         self.dim = dim
@@ -392,7 +402,7 @@ class BasicLayer(nn.Module):
                                  qkv_bias=qkv_bias, qk_scale=qk_scale,
                                  drop=drop, attn_drop=attn_drop,
                                  drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
-                                 norm_layer=norm_layer, simplex=simplex)
+                                 norm_layer=norm_layer, simplex=simplex, c_shuffle=c_shuffle)
             for i in range(depth)])
 
         # patch merging layer
@@ -449,7 +459,7 @@ class RSTB(nn.Module):
     def __init__(self, dim, input_resolution, depth, num_heads, window_size,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False,
-                 img_size=224, patch_size=4, resi_connection='1conv', simplex=False):
+                 img_size=224, patch_size=4, resi_connection='1conv', simplex=False, c_shuffle=False):
         super(RSTB, self).__init__()
 
         self.dim = dim
@@ -467,7 +477,8 @@ class RSTB(nn.Module):
                                          norm_layer=norm_layer,
                                          downsample=downsample,
                                          use_checkpoint=use_checkpoint,
-                                         simplex=simplex)
+                                         simplex=simplex,
+                                         c_shuffle=c_shuffle)
 
         if resi_connection == '1conv':
             self.conv = nn.Conv2d(dim, dim, 3, 1, 1)
@@ -657,7 +668,7 @@ class SwinIR(nn.Module):
                  window_size=7, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
                  norm_layer=nn.LayerNorm, ape=False, patch_norm=True,
-                 use_checkpoint=False, upscale=2, img_range=1., upsampler='', resi_connection='1conv', simplex=False,
+                 use_checkpoint=False, upscale=2, img_range=1., upsampler='', resi_connection='1conv', simplex=False, c_shuffle=False,
                  **kwargs):
         super(SwinIR, self).__init__()
         num_in_ch = in_chans
@@ -728,7 +739,8 @@ class SwinIR(nn.Module):
                          img_size=img_size,
                          patch_size=patch_size,
                          resi_connection=resi_connection,
-                         simplex=simplex
+                         simplex=simplex,
+                         c_shuffle=c_shuffle
                          )
             self.layers.append(layer)
         self.norm = norm_layer(self.num_features)
