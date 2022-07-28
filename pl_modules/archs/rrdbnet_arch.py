@@ -1,9 +1,23 @@
 from pl_modules import PL_ARCH_REGISTRY
-from basicsr.archs.arch_util import make_layer, default_init_weights
+from basicsr.archs.arch_util import default_init_weights
 
 from torch import nn
 import torch.nn.functional as F
 import torch
+
+
+def make_layer(basic_block, num_basic_block, **kwarg):
+    """Make layers by stacking the same blocks.
+    Args:
+        basic_block (nn.module): nn.module class for basic block.
+        num_basic_block (int): number of blocks.
+    Returns:
+        nn.Sequential: Stacked blocks in nn.Sequential.
+    """
+    layers = []
+    for _ in range(num_basic_block):
+        layers.append(basic_block(**kwarg))
+    return nn.ModuleList(layers)
 
 
 class ResidualDenseBlock(nn.Module):
@@ -21,9 +35,8 @@ class ResidualDenseBlock(nn.Module):
         num_interm_layers = 4
 
         self.layers = nn.ModuleList(
-            [nn.Sequential(nn.Conv2d(num_feat + i * num_grow_ch, num_grow_ch, 3, 1, 1), 
-            #norm_layer(num_grow_ch), 
-            act_func()) for i in range(num_interm_layers)]
+            [nn.ModuleList([nn.Conv2d(num_feat + i * num_grow_ch, num_grow_ch, 3, 1, 1),
+             act_func()]) for i in range(num_interm_layers)]
         )
         self.last_conv = nn.Conv2d(num_feat + num_interm_layers * num_grow_ch, num_feat, 3, 1, 1)
         # initialization
@@ -31,12 +44,23 @@ class ResidualDenseBlock(nn.Module):
         
         self.alpha = nn.Parameter(torch.tensor([0.2]), requires_grad=alpha_p)
 
-    def forward(self, x):
+    def forward(self, x, return_all=False):
         inp = x
+        outs = None
+        if return_all:
+            outs = []
         for layer in self.layers:
-            x = torch.cat((x, layer(x)), dim=1)
+            l_out = x
+            for i, layer2 in enumerate(layer):
+                l_out = layer2(l_out)
+                if i == 0 and return_all:
+                    outs.append(l_out)
+            x = torch.cat((x, l_out), dim=1)
         x = self.last_conv(x)
-        return x * self.alpha + inp
+        if return_all:
+            outs.append(x)
+            
+        return x * self.alpha + inp, outs
 
 
 class RRDB(nn.Module):
@@ -60,11 +84,14 @@ class RRDB(nn.Module):
             
         self.alpha = nn.Parameter(torch.tensor([0.2]), requires_grad=alpha_p)
 
-    def forward(self, x):
-        out = self.rdb1(x)
-        out = self.rdb2(out)
-        out = self.rdb3(out)
-
+    def forward(self, x, return_all=False):
+        out, outs = self.rdb1(x, return_all)
+        out, outs2 = self.rdb2(out, return_all)
+        out, outs3 = self.rdb3(out, return_all)
+        
+        if return_all:
+            outs = outs + outs2 + outs3
+        
         if self.attn:
             out = F.pixel_unshuffle(out, 4)
             shape = out.shape
@@ -73,7 +100,7 @@ class RRDB(nn.Module):
             out = out.permute(0, 2, 1).reshape(shape)
             out = F.pixel_shuffle(out, 4)
         # Empirically, we use 0.2 to scale the residual for better performance
-        return out * self.alpha + x
+        return out * self.alpha + x, outs
 
 
 @PL_ARCH_REGISTRY.register()
@@ -255,7 +282,10 @@ class RRDBNetOrg(nn.Module):
 
         self.lrelu = nn.LeakyReLU(negative_slope=0.2, inplace=True)
 
-    def forward(self, x):
+    def forward(self, x, return_all=False):
+        outs = None
+        if return_all:
+            outs = []
         if self.scale == 2:
             feat = F.pixel_unshuffle(x, downscale_factor=2)
         elif self.scale == 1:
@@ -263,10 +293,19 @@ class RRDBNetOrg(nn.Module):
         else:
             feat = x
         feat = self.conv_first(feat)
-        body_feat = self.conv_body(self.body(feat))
+        if return_all:
+            outs.append(feat)
+        body_feat = feat
+        for l in self.body:
+            body_feat, outs2 = l(body_feat, return_all)
+            if return_all:
+                outs = outs + outs2
+        body_feat = self.conv_body(body_feat)
+        if return_all:
+            outs.append(body_feat)
         feat = feat + body_feat
         # upsample
         feat = self.lrelu(self.conv_up1(F.interpolate(feat, scale_factor=2, mode='nearest')))
         feat = self.lrelu(self.conv_up2(F.interpolate(feat, scale_factor=2, mode='nearest')))
         out = self.conv_last(self.lrelu(self.conv_hr(feat)))
-        return out
+        return out, outs

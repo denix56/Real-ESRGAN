@@ -1,10 +1,10 @@
 # general settings
-name: 051_SwinIR_x4_DIV2K_rgb_shuffle_model
+name: 051_SwinIR_x4_DIV2K_rgb_oklab
 model_type: SRModel
 scale: 4
 num_gpu: auto  # set num_gpu: 0 for cpu mode
 manual_seed: 0
-color: rgb
+color: rgb,oklab
 mode: train
 
 # dataset and data loader settings
@@ -57,7 +57,7 @@ network_g:
   type: SwinIR
   img_size: 128
   patch_size: 1
-  in_chans: 3
+  in_chans: 6
   out_chans: 3
   embed_dim: 96
   upscale: 4

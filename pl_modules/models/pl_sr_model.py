@@ -241,13 +241,14 @@ class SRModel(BaseModel):
         return l_total
 
     def validation_step(self, batch, batch_idx):
-        print(self.net_g.training)
         lq = batch['lq']
         gt = batch['gt']
         lq_tmp = self.color_transform(lq)
         
         #ret_all = True
-        output = self.net_g(lq_tmp)
+        os.makedirs('saved_feats_hsv', exist_ok=True)
+        output, outs = self.net_g(lq_tmp, return_all=True)
+        torch.save(outs, f'saved_feats_hsv/{batch_idx}')
         
         # ~ if ret_all:
             # ~ prefix='val'
