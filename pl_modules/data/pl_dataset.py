@@ -8,6 +8,7 @@ import torch.nn.functional as F
 import pl_modules.data
 from pl_modules.data.augment import RgbToHsi, HsiToRgb, RgbToOklab, OklabToRgb
 from copy import deepcopy
+import math
 
 import kornia as K
 
@@ -92,6 +93,15 @@ class PLDataset(pl.LightningDataModule):
                 if color == 'rgb':
                     pipeline.append([torch.nn.Identity()])
                     pipeline_inv.append([torch.nn.Identity()])
+                elif color == 'rg':
+                    pipeline.append([K.contrib.Lambda(lambda x: x[:, :2])])
+                    pipeline_inv.append([torch.nn.Identity()])
+                elif color == 'gb':
+                    pipeline.append([K.contrib.Lambda(lambda x: x[:, 1:])])
+                    pipeline_inv.append([torch.nn.Identity()])
+                elif color == 'rb':
+                    pipeline.append([K.contrib.Lambda(lambda x: torch.cat((x[:, 0:1], x[:, 2:]), dim=1))])
+                    pipeline_inv.append([torch.nn.Identity()])
                 elif color == 'y':
                     pipeline.append([K.color.RgbToYcbcr(),
                                      K.contrib.Lambda(lambda x: x[:, :1])])
@@ -100,8 +110,19 @@ class PLDataset(pl.LightningDataModule):
                     pipeline.append([K.color.RgbToYcbcr()])
                     pipeline_inv.append([K.color.YcbcrToRgb()])
                 elif color == 'hsv':
-                    pipeline.append([K.color.RgbToHsv()])
-                    pipeline_inv.append([K.color.HsvToRgb()])
+                    def hsv_norm_func(x):
+                        x = x.clone()
+                        x[:, 0] /= 2*math.pi
+                        return x
+                    def hsv_denorm_func(x):
+                        x = x.clone()
+                        x[:, 0] *= 2*math.pi
+                        return x
+                        
+                    pipeline.append([K.color.RgbToHsv(), 
+                                     K.contrib.Lambda(hsv_norm_func)])
+                    pipeline_inv.append([K.contrib.Lambda(hsv_denorm_func),
+                                         K.color.HsvToRgb()])
                 elif color == 'hls':
                     pipeline.append([K.color.RgbToHls()])
                     pipeline_inv.append([K.color.HlsToRgb()])
@@ -164,6 +185,15 @@ class PLDataset(pl.LightningDataModule):
                 lq = F.interpolate(batch['lq_org'], size=batch['out'].shape[-2:], mode='bicubic')
                 lq = K.color.rgb_to_ycbcr(lq)
                 batch['out'] = torch.cat((batch['out'], lq[:, 1:]), dim=1)
+            elif colors[0] == 'rg':
+                lq = F.interpolate(batch['lq_org'], size=batch['out'].shape[-2:], mode='bicubic')
+                batch['out'] = torch.cat((batch['out'], lq[:, 2:]), dim=1)
+            elif colors[0] == 'gb':
+                lq = F.interpolate(batch['lq_org'], size=batch['out'].shape[-2:], mode='bicubic')
+                batch['out'] = torch.cat((lq[:, 0:1], batch['out']), dim=1)
+            elif colors[0] == 'rb':
+                lq = F.interpolate(batch['lq_org'], size=batch['out'].shape[-2:], mode='bicubic')
+                batch['out'] = torch.cat((batch['out'][:, 0:1], lq[:, 1:2], batch['out'][:, 1:]), dim=1)
             batch['out'] = self.pipeline_inv(batch['out'].to(torch.float32)).to(batch['out'].dtype)
             batch['lq'] = batch['lq_org']
             if 'gt' in batch:

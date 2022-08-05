@@ -116,6 +116,7 @@ class ColorTransform2(nn.Module):
 class SRModel(BaseModel):
     def __init__(self, opt):
         super(SRModel, self).__init__(opt)
+        opt['network_g']['scale'] = opt['scale']
         self.net_g = build_network(opt['network_g'])
 
         val_metrics = []
@@ -194,14 +195,14 @@ class SRModel(BaseModel):
 
     def forward(self, batch):
         lq = batch['lq']
-        output = self.color_transform(self.net_g(self.color_transform(lq)), inv=True)
+        output = self.color_transform(self.net_g(self.color_transform(lq))[0], inv=True)
         return output
 
     def training_step(self, batch, batch_idx):
         lq = batch['lq']
         gt = batch.get('gt')
         lq_tmp = self.color_transform(lq)
-        output = self.net_g(lq_tmp)
+        output, _ = self.net_g(lq_tmp)
         output = self.color_transform(output, inv=True, freeze=True)
         
         lq_output = self.color_transform(lq_tmp.detach(), inv=True)
@@ -247,8 +248,9 @@ class SRModel(BaseModel):
         
         #ret_all = True
         os.makedirs('saved_feats_hsv', exist_ok=True)
-        output, outs = self.net_g(lq_tmp, return_all=True)
-        torch.save(outs, f'saved_feats_hsv/{batch_idx}')
+        output, outs = self.net_g(lq_tmp, return_all=False)
+        if outs:
+            torch.save(outs, f'saved_feats_hsv/{batch_idx}')
         
         # ~ if ret_all:
             # ~ prefix='val'
