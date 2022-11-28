@@ -19,6 +19,8 @@ from pl_modules.metrics.metric_util import GatherImages
 
 import torch.nn as nn
 
+import numpy as np
+
 
 def inverse_leaky_relu(x, negative_slope=1e-2, inplace=False):
     return F.leaky_relu(x, 1./negative_slope, inplace=inplace)
@@ -79,6 +81,31 @@ class ColorTransform(nn.Module):
         x = model(x)
         x = x.permute(0, 3, 1, 2)
         return x
+        
+        
+class RandomColorSpace(nn.Module):
+    def __init__(self, n_color_spaces = 1):
+        super().__init__()
+        
+        self.n_color_spaces = n_color_spaces
+        
+        self.net = nn.Sequential(nn.Conv2d(3+self.n_color_spaces, 32, 3, 1, 1),
+                                 nn.LeakyReLU(inplace=True),
+                                 nn.Conv2d(32, 32, 3, 1, 1))
+                                 
+    def forward(self, x, idx=None):
+        if idx is None:
+            idx = np.random.default_rng().choice(self.n_color_spaces)
+        x = x[:, idx*3:(idx+1)*3]
+        mask = torch.zeros(self.n_color_spaces, device=x.device)
+        mask[idx] = 1.0
+        mask = mask.view(1, -1, 1, 1)
+        shape = list(x.shape)
+        shape[1] = -1
+        mask = mask.expand(*shape)
+        x = torch.cat((x, mask), dim=1)
+        
+        return self.net(x)
         
         
 class ColorTransform2(nn.Module):
@@ -142,6 +169,11 @@ class SRModel(BaseModel):
         self.val_metrics_step = MetricCollection(val_metrics_step, prefix='val/') if val_metrics_step else None
         self.gather_images = GatherImages()
 
+        if self.opt['train'].get('random_c', False):
+            self.random_trans = RandomColorSpace(len(self.opt['color'].split(',')))
+        else:
+            self.random_trans = None
+
         train_ds_opt = opt['datasets'].get('train')
         if train_ds_opt:
             gt_size = train_ds_opt['gt_size']
@@ -179,6 +211,8 @@ class SRModel(BaseModel):
     def _setup_optimizers(self):
         train_opt = self.opt['train']
         optim_params = []
+        if self.random_trans:
+            optim_params.extend(self.random_trans.parameters())
         for k, v in self.net_g.named_parameters():
             if v.requires_grad:
                 optim_params.append(v)
@@ -188,6 +222,7 @@ class SRModel(BaseModel):
         optim_type = train_opt['optim_g'].pop('type')
         optimizer_g = self._get_optimizer(optim_type, 
                                           #itertools.chain(
+                                          #self.random_trans,
                                           optim_params, 
                                           #self.color_transform.parameters()), 
                                           **train_opt['optim_g'])
@@ -195,14 +230,23 @@ class SRModel(BaseModel):
 
     def forward(self, batch):
         lq = batch['lq']
-        output = self.color_transform(self.net_g(self.color_transform(lq))[0], inv=True)
+        tmp = self.color_transform(lq)
+        if self.random_trans:
+            tmp = self.random_trans(tmp, 0)
+        tmp = self.net_g(tmp)[0]
+        output = self.color_transform(tmp, inv=True)
         return output
 
     def training_step(self, batch, batch_idx):
         lq = batch['lq']
         gt = batch.get('gt')
         lq_tmp = self.color_transform(lq)
-        output, _ = self.net_g(lq_tmp)
+        
+        if self.random_trans:
+            lq_tmp_t = self.random_trans(lq_tmp)
+        else:
+            lq_tmp_t = lq_tmp
+        output, _ = self.net_g(lq_tmp_t)
         output = self.color_transform(output, inv=True, freeze=True)
         
         lq_output = self.color_transform(lq_tmp.detach(), inv=True)
@@ -246,28 +290,13 @@ class SRModel(BaseModel):
         gt = batch['gt']
         lq_tmp = self.color_transform(lq)
         
-        #ret_all = True
-        os.makedirs('saved_feats_hsv', exist_ok=True)
+        if self.random_trans:
+            lq_tmp = self.random_trans(lq_tmp, 0)
+        
+        #os.makedirs('saved_feats_hsv', exist_ok=True)
         output, outs = self.net_g(lq_tmp, return_all=False)
         if outs:
             torch.save(outs, f'saved_feats_hsv/{batch_idx}')
-        
-        # ~ if ret_all:
-            # ~ prefix='val'
-            # ~ path = osp.join(self.opt['path']['visualization'], prefix, 'all')
-            # ~ os.makedirs(path, exist_ok=True)
-            # ~ i = batch_idx+self.global_rank*100
-            # ~ for (i1, i2, i3) in zip(*output):
-                # ~ i1 = i1.unsqueeze(0)
-                # ~ i2 = i2.unsqueeze(0)
-                # ~ i3 = i3.unsqueeze(0)
-                # ~ i1 = F.interpolate(i1, size=i3.shape[-2:], mode='bicubic')
-                # ~ i2 = F.interpolate(i2, size=i3.shape[-2:], mode='bicubic')
-                # ~ joined = torch.cat((i1, i2, i3), dim=-1)
-                # ~ joined = self.color_transform(joined, inv=True).clamp(0, 1)
-                # ~ save_image(joined, osp.join(self.opt['path']['visualization'], prefix, 'all', 'image_{}.png'.format(i)))
-            # ~ output = output[-1]
-        
         output = self.color_transform(output, inv=True)
 
         if isinstance(output, list):

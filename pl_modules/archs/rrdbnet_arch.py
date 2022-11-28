@@ -304,6 +304,8 @@ class RRDBNetOrg(nn.Module):
         if return_all:
             outs.append(body_feat)
         feat = feat + body_feat
+        if return_all:
+            outs = outs[:25]
         # upsample
         feat = self.lrelu(self.conv_up1(F.interpolate(feat, scale_factor=2, mode='nearest')))
         feat = self.lrelu(self.conv_up2(F.interpolate(feat, scale_factor=2, mode='nearest')))

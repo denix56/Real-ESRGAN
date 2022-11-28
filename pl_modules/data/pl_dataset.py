@@ -102,6 +102,33 @@ class PLDataset(pl.LightningDataModule):
                 elif color == 'rb':
                     pipeline.append([K.contrib.Lambda(lambda x: torch.cat((x[:, 0:1], x[:, 2:]), dim=1))])
                     pipeline_inv.append([torch.nn.Identity()])
+                elif color == 'rgb_interpolated':
+                    n_channels = 3
+                    
+                    def interpolate_color(x):
+                        x_new = torch.zeros(x.shape[0], 3*n_channels, *x.shape[2:], device=x.device)
+                        for i in range(x.shape[1]):
+                            for j in range(n_channels):
+                                v_min = j / n_channels
+                                v_max = (j+1) / n_channels if j < n_channels-1 else 1.0
+                                mask = (x[:, i] < v_min) | (x[:, i] > v_max)
+                                x_new[:, i*3+j] = (x[:, i] - v_min) / (v_max - v_min)
+                                x_new[:, i*3+j][mask] = -1
+                        return x_new
+                        
+                    def deinterpolate_color(x):
+                        x_new = torch.zeros(x.shape[0], 3, *x.shape[2:], device=x.device)
+                        for i in range(x.shape[1]):
+                            j = i // n_channels
+                            k = i % n_channels
+                            v_min = k / n_channels
+                            v_max =(k+1) / n_channels if k < n_channels-1 else 1.0
+                            mask = x[:, i] >= 0
+                            x_new[:, j][mask] = x[:, i][mask] * (v_max - v_min) + v_min
+                        return x_new
+                        
+                    pipeline.append([K.contrib.Lambda(interpolate_color)])
+                    pipeline_inv.append([K.contrib.Lambda(deinterpolate_color)])
                 elif color == 'y':
                     pipeline.append([K.color.RgbToYcbcr(),
                                      K.contrib.Lambda(lambda x: x[:, :1])])
@@ -124,8 +151,19 @@ class PLDataset(pl.LightningDataModule):
                     pipeline_inv.append([K.contrib.Lambda(hsv_denorm_func),
                                          K.color.HsvToRgb()])
                 elif color == 'hls':
-                    pipeline.append([K.color.RgbToHls()])
-                    pipeline_inv.append([K.color.HlsToRgb()])
+                    def hsv_norm_func(x):
+                        x = x.clone()
+                        x[:, 0] /= 2*math.pi
+                        return x
+                    def hsv_denorm_func(x):
+                        x = x.clone()
+                        x[:, 0] *= 2*math.pi
+                        return x
+                        
+                    pipeline.append([K.color.RgbToHls(), 
+                                     K.contrib.Lambda(hsv_norm_func)])
+                    pipeline_inv.append([K.contrib.Lambda(hsv_denorm_func),
+                                         K.color.HlsToRgb()])
                 elif color == 'lab':
                     pipeline.append([K.color.RgbToLab()])
                     pipeline_inv.append([K.color.LabToRgb()])
@@ -142,8 +180,19 @@ class PLDataset(pl.LightningDataModule):
                     pipeline.append([RgbToOklab()])
                     pipeline_inv.append([OklabToRgb()])
                 elif color == 'hsi':
-                    pipeline.append([RgbToHsi()])
-                    pipeline_inv.append([HsiToRgb()])
+                    def hsv_norm_func(x):
+                        x = x.clone()
+                        x[:, 0] /= 2*math.pi
+                        return x
+                    def hsv_denorm_func(x):
+                        x = x.clone()
+                        x[:, 0] *= 2*math.pi
+                        return x
+                        
+                    pipeline.append([RgbToHsi(), 
+                                     K.contrib.Lambda(hsv_norm_func)])
+                    pipeline_inv.append([K.contrib.Lambda(hsv_denorm_func),
+                                         HsiToRgb()])
                 else:
                     raise NotImplementedError()
 
@@ -151,13 +200,13 @@ class PLDataset(pl.LightningDataModule):
                 std = self.opt.get(f'std_{color}', None)
                 if mean is not None and std is not None:
                     pipeline[-1].append(K.enhance.Normalize(mean, std))
-                    pipeline_inv[-1].append(K.enhance.Denormalize(mean, std))
+                    pipeline_inv[-1].insert(0, K.enhance.Denormalize(mean, std))
 
         if pipeline:
             self.pipeline = MultiTransform(pipeline)
             pipeline_inv = pipeline_inv[0]
             #self.pipeline = K.augmentation.container.AugmentationSequential(*pipeline)
-            self.pipeline_inv = K.augmentation.container.AugmentationSequential(*pipeline_inv[::-1])
+            self.pipeline_inv = K.augmentation.container.AugmentationSequential(*pipeline_inv)
         else:
             self.pipeline = None
             self.pipeline_inv = None

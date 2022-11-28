@@ -858,7 +858,7 @@ class SwinIR(nn.Module):
 
         x = x / self.img_range + self.mean
 
-        return x[:, :, :H * self.upscale, :W * self.upscale]
+        return x[:, :, :H * self.upscale, :W * self.upscale], None
 
     def flops(self):
         flops = 0

@@ -42,7 +42,7 @@ class ESRGANModel(SRGANModel):
 
     def forward(self, batch):
         lq = batch['lq']
-        outputs = self.net_g(lq)
+        outputs, _ = self.net_g(lq)
         if not isinstance(outputs, list):
             outputs = [outputs]
         outputs_d = []
@@ -64,7 +64,7 @@ class ESRGANModel(SRGANModel):
         gan_gt = batch.get('gan_gt')
 
         if optimizer_idx == 0:
-            outputs = self.net_g(lq)
+            outputs, _ = self.net_g(lq)
             if not isinstance(outputs, list):
                 outputs = [outputs]
 
@@ -153,7 +153,7 @@ class ESRGANModel(SRGANModel):
             # tensor for calculating mean.
 
             # real
-            outputs = self.net_g(lq)
+            outputs, _ = self.net_g(lq)
             if not isinstance(outputs, list):
                 outputs = [outputs]
 

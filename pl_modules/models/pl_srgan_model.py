@@ -65,7 +65,7 @@ class SRGANModel(SRModel):
 
     def forward(self, batch):
         lq = batch['lq']
-        output = self.net_g(lq)
+        output, _ = self.net_g(lq)
         if self.cat_imgs:
             lq_scaled = F.interpolate(lq, size=output.shape[-2:], mode='bilinear')
             output = torch.cat((lq_scaled, output), dim=1)
@@ -80,7 +80,7 @@ class SRGANModel(SRModel):
         gan_gt = batch.get('gan_gt')
 
         if optimizer_idx == 0:
-            output = self.net_g(lq)
+            output, _ = self.net_g(lq)
             l_g_total = 0
             loss_dict = {}
             if self.cri_pix:
@@ -119,7 +119,7 @@ class SRGANModel(SRModel):
             l_d_total = 0
             loss_dict = {}
 
-            output = self.net_g(lq)
+            output, _ = self.net_g(lq)
             output_org = output
 
             if self.cat_imgs:
